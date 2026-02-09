@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import tempfile
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -86,6 +89,92 @@ def _count_video_files(path: Path) -> int:
     return count
 
 
+def _extract_wget_tokens(command: Any) -> list[str] | None:
+    if isinstance(command, str):
+        try:
+            tokens = shlex.split(command, posix=False)
+        except ValueError:
+            tokens = command.split()
+    elif isinstance(command, (list, tuple)):
+        tokens = [str(value) for value in command]
+    else:
+        return None
+    if not tokens:
+        return None
+    executable = Path(tokens[0]).name.lower()
+    if executable not in {"wget", "wget.exe"}:
+        return None
+    return tokens
+
+
+def _download_wget_command(*, tokens: list[str]) -> None:
+    target_dir = Path(".")
+    url = ""
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-P" and index + 1 < len(tokens):
+            target_dir = Path(tokens[index + 1])
+            index += 2
+            continue
+        lowered = token.lower()
+        if lowered.startswith("http://") or lowered.startswith("https://"):
+            url = token
+        index += 1
+
+    if not url:
+        raise RuntimeError("vbench wget invocation did not include URL")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    parsed = urllib.parse.urlparse(url)
+    filename = Path(parsed.path).name or "download.bin"
+    destination = target_dir / filename
+    if destination.exists():
+        return
+    urllib.request.urlretrieve(url, str(destination))
+
+
+def _patch_vbench_wget_runner() -> Any:
+    import vbench.utils as vbench_utils
+
+    subprocess_proxy_target = getattr(vbench_utils, "subprocess", None)
+    if subprocess_proxy_target is None or not hasattr(subprocess_proxy_target, "run"):
+        raise RuntimeError("vbench.utils subprocess module is unavailable for wget patching")
+
+    class _SubprocessProxy:
+        def __init__(self, delegate: Any) -> None:
+            self._delegate = delegate
+
+        def run(self, command: Any, *args: Any, **kwargs: Any) -> Any:
+            tokens = _extract_wget_tokens(command)
+            if tokens is not None:
+                _download_wget_command(tokens=tokens)
+                return self._delegate.CompletedProcess(command, 0)
+            return self._delegate.run(command, *args, **kwargs)
+
+    vbench_utils.subprocess = _SubprocessProxy(subprocess_proxy_target)
+
+    def _restore() -> None:
+        vbench_utils.subprocess = subprocess_proxy_target
+
+    return _restore
+
+
+def _ensure_wget_command(*, allow_wget_shim: bool) -> bool:
+    if shutil.which("wget"):
+        return False
+    if os.name != "nt":
+        raise RuntimeError(
+            "vbench official backend requires `wget` command in PATH on this platform."
+        )
+    if not allow_wget_shim:
+        raise RuntimeError(
+            "vbench official backend requires `wget` command in PATH. "
+            "Install wget or set params.allow_wget_shim=true."
+        )
+    return True
+
+
 def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
     params = params or {}
 
@@ -121,6 +210,8 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
 
     output_root = Path(str(params.get("output_dir", "artifacts/vbench_official"))).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    allow_wget_shim = bool(params.get("allow_wget_shim", True))
+    use_windows_wget_patch = _ensure_wget_command(allow_wget_shim=allow_wget_shim)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="temporalci_vbench_", dir=str(output_root)))
     videos_dir = temp_dir / "videos"
@@ -156,17 +247,35 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
         run_name = str(params.get("run_name", "temporalci")).strip() or "temporalci"
         local = bool(params.get("load_ckpt_from_local", False))
         read_frame = bool(params.get("read_frame", False))
+        allow_unsafe_torch_load = bool(params.get("allow_unsafe_torch_load", True))
+
+        def _noop_restore() -> None:
+            return None
+
+        restore_wget_patch = _noop_restore
+        if use_windows_wget_patch:
+            restore_wget_patch = _patch_vbench_wget_runner()
+
+        torch_env_key = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
+        torch_env_was_set = torch_env_key in os.environ
+        if allow_unsafe_torch_load and not torch_env_was_set:
+            os.environ[torch_env_key] = "1"
 
         evaluator = VBench(device, full_info_json, str(temp_dir))
-        evaluator.evaluate(
-            videos_path=str(videos_path),
-            name=run_name,
-            prompt_list=prompt_list,
-            dimension_list=[str(dim) for dim in dimensions],
-            local=local,
-            read_frame=read_frame,
-            mode=vbench_mode,
-        )
+        try:
+            evaluator.evaluate(
+                videos_path=str(videos_path),
+                name=run_name,
+                prompt_list=prompt_list,
+                dimension_list=[str(dim) for dim in dimensions],
+                local=local,
+                read_frame=read_frame,
+                mode=vbench_mode,
+            )
+        finally:
+            if allow_unsafe_torch_load and not torch_env_was_set:
+                os.environ.pop(torch_env_key, None)
+            restore_wget_patch()
 
         result_path = temp_dir / f"{run_name}_eval_results.json"
         if not result_path.exists():
