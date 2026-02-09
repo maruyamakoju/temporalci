@@ -1,0 +1,65 @@
+name: svd-regression-gate-demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_suite:
+        description: Baseline suite path
+        required: true
+        default: examples/svd_regression_fast.yaml
+        type: string
+      candidate_suite:
+        description: Candidate suite path
+        required: true
+        default: examples/svd_regression_fast_degraded.yaml
+        type: string
+      expect_fail:
+        description: Expect candidate to fail with gate/regression (exit code 2)
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  gate-demo:
+    # Requires a self-hosted GPU runner with CUDA-enabled torch.
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[diffusers]
+      - name: Generate demo init images
+        run: |
+          python tools/generate_demo_assets.py
+      - name: Run baseline
+        run: |
+          python -m temporalci run "${{ inputs.baseline_suite }}" \
+            --artifacts-dir artifacts/svd-demo-ci \
+            --baseline-mode none
+      - name: Run candidate and verify gate behavior
+        shell: bash
+        run: |
+          set +e
+          python -m temporalci run "${{ inputs.candidate_suite }}" \
+            --artifacts-dir artifacts/svd-demo-ci \
+            --baseline-mode latest_pass
+          code=$?
+          set -e
+
+          echo "candidate_exit_code=$code"
+
+          if [ "${{ inputs.expect_fail }}" = "true" ]; then
+            if [ "$code" -ne 2 ]; then
+              echo "expected candidate to fail with exit code 2"
+              exit 1
+            fi
+          else
+            if [ "$code" -ne 0 ]; then
+              echo "expected candidate to pass with exit code 0"
+              exit 1
+            fi
+          fi

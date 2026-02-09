@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporalci
+      POSTGRES_PASSWORD: temporalci
+      POSTGRES_DB: temporalci
+    ports:
+      - "5432:5432"
+    volumes:
+      - temporalci_pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - temporalci_minio_data:/data
+
+  coordinator:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.coordinator
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    environment:
+      TEMPORALCI_POSTGRES_DSN: postgresql://temporalci:temporalci@postgres:5432/temporalci
+      TEMPORALCI_REDIS_URL: redis://redis:6379/0
+      TEMPORALCI_QUEUE_NAME: temporalci:tasks
+      TEMPORALCI_ARTIFACTS_DIR: /app/artifacts
+      TEMPORALCI_MINIO_ENDPOINT: minio:9000
+      TEMPORALCI_MINIO_ACCESS_KEY: minioadmin
+      TEMPORALCI_MINIO_SECRET_KEY: minioadmin
+      TEMPORALCI_MINIO_BUCKET: temporalci-artifacts
+      TEMPORALCI_MINIO_SECURE: "false"
+      TEMPORALCI_TASK_LEASE_SEC: "300"
+      TEMPORALCI_HEARTBEAT_INTERVAL_SEC: "30"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ..:/app
+
+volumes:
+  temporalci_pg_data:
+  temporalci_minio_data:

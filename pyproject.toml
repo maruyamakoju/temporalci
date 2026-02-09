@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "temporalci"
+version = "0.1.0"
+description = "TemporalCI MVP: video model regression and safety gate runner"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+temporalci = "temporalci.cli:main"
+temporalci-distributed = "temporalci.coordinator.cli:main"
+
+[project.optional-dependencies]
+diffusers = [
+  "diffusers>=0.30",
+  "Pillow>=10.0",
+  "numpy>=1.26",
+  "peft>=0.17.0",
+]
+official-benchmarks = [
+  "vbench>=0.1.5",
+]
+distributed = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "psycopg[binary]>=3.2",
+  "redis>=5.0",
+  "boto3>=1.35",
+]
+
+[tool.setuptools]
+packages = [
+  "temporalci",
+  "temporalci.adapters",
+  "temporalci.metrics",
+  "temporalci.coordinator",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: requires heavy/optional dependencies and external assets",
+]
