@@ -22,10 +22,37 @@ CUSTOM_INPUT_SUPPORTED_DIMS = {
     "aesthetic_quality",
     "imaging_quality",
 }
+_TRUE_VALUES = {"1", "true", "yes", "y", "on"}
+_FALSE_VALUES = {"0", "false", "no", "n", "off"}
 
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _as_bool(value: Any, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_VALUES:
+            return True
+        if normalized in _FALSE_VALUES:
+            return False
+        return default
+    if _is_number(value):
+        return bool(value)
+    return default
+
+
+def _as_int(value: Any, *, default: int, minimum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < minimum:
+        return minimum
+    return parsed
 
 
 def _extract_dimension_score(payload: Any) -> float | None:
@@ -87,6 +114,80 @@ def _count_video_files(path: Path) -> int:
         if child.is_file() and child.suffix.lower() in SUPPORTED_VIDEO_SUFFIXES:
             count += 1
     return count
+
+
+def _latest_video_mtime(path: Path) -> float:
+    latest = 0.0
+    for child in path.iterdir():
+        if not child.is_file() or child.suffix.lower() not in SUPPORTED_VIDEO_SUFFIXES:
+            continue
+        stat = child.stat()
+        latest = max(latest, float(stat.st_mtime))
+    if latest > 0.0:
+        return latest
+    return float(path.stat().st_mtime)
+
+
+def _discover_video_dirs(
+    *,
+    root: Path,
+    max_depth: int,
+    max_candidates: int,
+) -> list[Path]:
+    root_depth = len(root.parts)
+    candidates: list[Path] = []
+    for current_root, child_dirs, _child_files in os.walk(root):
+        current_path = Path(current_root)
+        depth = len(current_path.parts) - root_depth
+        if depth > max_depth:
+            child_dirs[:] = []
+            continue
+
+        if current_path.name.lower() == "videos":
+            if _count_video_files(current_path) > 0:
+                candidates.append(current_path.resolve())
+                if len(candidates) >= max_candidates:
+                    break
+            child_dirs[:] = []
+
+    return sorted(candidates, key=_latest_video_mtime, reverse=True)
+
+
+def _resolve_standard_videos_path(*, params: dict[str, Any]) -> tuple[Path, str]:
+    explicit_raw = str(params.get("videos_path", "")).strip()
+    if explicit_raw and explicit_raw.lower() != "auto":
+        explicit = Path(explicit_raw).resolve()
+        if not explicit.exists():
+            raise FileNotFoundError(f"vbench_official videos_path not found: {explicit}")
+        sample_count = _count_video_files(explicit)
+        if sample_count <= 0:
+            raise ValueError(f"no supported video files found under {explicit}")
+        return explicit, "explicit"
+
+    auto_root_raw = str(params.get("videos_auto_root", "artifacts")).strip() or "artifacts"
+    auto_root = Path(auto_root_raw).resolve()
+    if not auto_root.exists():
+        raise FileNotFoundError(
+            f"vbench_official auto videos root not found: {auto_root}. "
+            "Set params.videos_path explicitly or create videos under the auto root."
+        )
+    max_depth = _as_int(params.get("videos_auto_max_depth", 8), default=8, minimum=1)
+    max_candidates = _as_int(
+        params.get("videos_auto_max_candidates", 256),
+        default=256,
+        minimum=1,
+    )
+    candidates = _discover_video_dirs(
+        root=auto_root,
+        max_depth=max_depth,
+        max_candidates=max_candidates,
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            "vbench_official could not find any non-empty `videos` directory under "
+            f"{auto_root}. Set params.videos_path explicitly."
+        )
+    return candidates[0], "auto"
 
 
 def _extract_wget_tokens(command: Any) -> list[str] | None:
@@ -208,9 +309,13 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
             "vbench is not installed. Install official dependency with `pip install vbench`."
         ) from exc
 
+    env_videos_path = str(os.getenv("RUN_VBENCH_VIDEOS_PATH", "")).strip()
+    if not params.get("videos_path") and env_videos_path:
+        params["videos_path"] = env_videos_path
+
     output_root = Path(str(params.get("output_dir", "artifacts/vbench_official"))).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    allow_wget_shim = bool(params.get("allow_wget_shim", True))
+    allow_wget_shim = _as_bool(params.get("allow_wget_shim", True), default=True)
     use_windows_wget_patch = _ensure_wget_command(allow_wget_shim=allow_wget_shim)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="temporalci_vbench_", dir=str(output_root)))
@@ -230,24 +335,20 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
             sample_count = len(copied_videos)
             vbench_mode = "custom_input"
         else:
-            videos_path_raw = str(params.get("videos_path", "")).strip()
-            if not videos_path_raw:
-                raise ValueError("vbench_official mode='standard' requires params.videos_path")
-            videos_path = Path(videos_path_raw).resolve()
-            if not videos_path.exists():
-                raise FileNotFoundError(f"vbench_official videos_path not found: {videos_path}")
+            videos_path, videos_path_source = _resolve_standard_videos_path(params=params)
             prompt_list = []
             sample_count = _count_video_files(videos_path)
-            if sample_count == 0:
-                raise ValueError(f"no supported video files found under {videos_path}")
             vbench_mode = "vbench_standard"
 
         full_info_json = str(params.get("full_info_json", "")).strip() or _resolve_full_info_json()
         device = str(params.get("device", "cuda")).strip() or "cuda"
         run_name = str(params.get("run_name", "temporalci")).strip() or "temporalci"
-        local = bool(params.get("load_ckpt_from_local", False))
-        read_frame = bool(params.get("read_frame", False))
-        allow_unsafe_torch_load = bool(params.get("allow_unsafe_torch_load", True))
+        local = _as_bool(params.get("load_ckpt_from_local", False), default=False)
+        read_frame = _as_bool(params.get("read_frame", False), default=False)
+        allow_unsafe_torch_load = _as_bool(
+            params.get("allow_unsafe_torch_load", False),
+            default=False,
+        )
 
         def _noop_restore() -> None:
             return None
@@ -263,15 +364,25 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
 
         evaluator = VBench(device, full_info_json, str(temp_dir))
         try:
-            evaluator.evaluate(
-                videos_path=str(videos_path),
-                name=run_name,
-                prompt_list=prompt_list,
-                dimension_list=[str(dim) for dim in dimensions],
-                local=local,
-                read_frame=read_frame,
-                mode=vbench_mode,
-            )
+            try:
+                evaluator.evaluate(
+                    videos_path=str(videos_path),
+                    name=run_name,
+                    prompt_list=prompt_list,
+                    dimension_list=[str(dim) for dim in dimensions],
+                    local=local,
+                    read_frame=read_frame,
+                    mode=vbench_mode,
+                )
+            except Exception as exc:  # noqa: BLE001
+                message = str(exc)
+                if not allow_unsafe_torch_load and "Weights only load failed" in message:
+                    raise RuntimeError(
+                        "vbench_official failed to load official checkpoint in safe mode. "
+                        "For trusted checkpoints only, rerun with "
+                        "`params.allow_unsafe_torch_load=true`."
+                    ) from exc
+                raise
         finally:
             if allow_unsafe_torch_load and not torch_env_was_set:
                 os.environ.pop(torch_env_key, None)
@@ -301,6 +412,9 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
             "backend": "vbench_official",
             "mode": mode,
         }
+        if mode == "standard":
+            result["resolved_videos_path"] = str(videos_path)
+            result["videos_path_source"] = videos_path_source
 
         if keep_workdir:
             result["work_dir"] = str(temp_dir)

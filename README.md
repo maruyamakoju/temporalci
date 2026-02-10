@@ -137,6 +137,11 @@ See full sample: `examples/safetybench_prompt_source.yaml`.
   - `dynamic_degree`
   - `aesthetic_quality`
   - `imaging_quality`
+- In `standard`, `videos_path` can be:
+  - explicit path to a videos directory
+  - `"auto"` (or omitted), which picks the newest non-empty `**/videos` directory under `videos_auto_root` (default: `artifacts`)
+- Windows fallback for upstream `wget` dependency is enabled by default (`allow_wget_shim=true`).
+- `allow_unsafe_torch_load` defaults to `false`. Set `true` only for trusted official checkpoints when PyTorch 2.6 safe loading blocks upstream model loading.
 
 ### `t2vsafetybench_official`
 
