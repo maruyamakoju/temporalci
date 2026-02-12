@@ -273,6 +273,25 @@ Health check:
 python scripts/check_autopilot_health.py --artifacts-dir artifacts/autopilot-96h
 ```
 
+Telemetry sidecar (non-intrusive monitor):
+
+```bash
+python scripts/autopilot_telemetry.py \
+  --artifacts-dir artifacts/autopilot-96h \
+  --interval-sec 60
+```
+
+By default this writes `autopilot_telemetry.jsonl` and stops automatically when
+the autopilot pid dies or the status reaches a terminal state.
+
+Generate run summary artifacts:
+
+```bash
+python scripts/autopilot_summary.py --artifacts-dir artifacts/autopilot-96h
+```
+
+This writes `autopilot_summary.json` and `autopilot_summary.md`.
+
 Automatic stale-status repair:
 
 ```bash

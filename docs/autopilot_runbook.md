@@ -8,6 +8,7 @@ This runbook covers launch, health checks, stale repair, and stop/recovery for d
 - PID metadata: `artifacts/autopilot-96h/autopilot.pid`
 - Status: `artifacts/autopilot-96h/autopilot_status.json`
 - Cycle log: `artifacts/autopilot-96h/autopilot_runs.jsonl`
+- Telemetry log: `artifacts/autopilot-96h/autopilot_telemetry.jsonl`
 - Session log: `artifacts/autopilot-96h/session.log`
 
 ## Launch
@@ -48,6 +49,40 @@ Key fields:
 - `healthy`: `true` only when `pid_alive=true`, `state=running`, and status age is not stale.
 - `stale`: status age exceeded `--max-stale-sec` (default `1800`).
 - `last_runs_line`: last JSONL line for quick inspection.
+
+## Sidecar Telemetry
+
+Run telemetry sidecar without restarting autopilot:
+
+```bash
+python scripts/autopilot_telemetry.py \
+  --artifacts-dir artifacts/autopilot-96h \
+  --interval-sec 60
+```
+
+Each JSONL record includes:
+
+- `timestamp_utc`
+- `pid`, `pid_alive`
+- `cycle`, `state`, `phase`
+- `rss_bytes` (from `psutil`, or `null` if unavailable)
+- `gpu_mem_mb`, `gpu_util` (from `nvidia-smi`, or `null` if unavailable)
+- `last_runs_tail_hash`
+
+When monitoring stops, the final record includes `telemetry_stop_reason`.
+
+## Summary Artifacts
+
+Generate summary JSON/Markdown from cycle + telemetry logs:
+
+```bash
+python scripts/autopilot_summary.py --artifacts-dir artifacts/autopilot-96h
+```
+
+Outputs:
+
+- `autopilot_summary.json`
+- `autopilot_summary.md`
 
 ## Stale Repair
 
