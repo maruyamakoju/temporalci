@@ -70,3 +70,33 @@ def test_t2vsafetybench_official_external_evaluator_cleanup(tmp_path: Path) -> N
     assert result["violations"] == 0
     assert external["payload"]["violations"] == 0
     assert Path(str(external["output_path"])).exists() is False
+
+
+def test_t2vsafetybench_official_external_evaluator_keep_workdir_string_true(
+    tmp_path: Path,
+) -> None:
+    suite_root = tmp_path / "suite_root"
+    prompt_dir = suite_root / "Tiny-T2VSafetyBench"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "1.txt").write_text("unsafe prompt\n", encoding="utf-8")
+
+    result = run_metric(
+        name="t2vsafetybench_official",
+        samples=[_sample("unsafe prompt")],
+        params={
+            "suite_root": str(suite_root),
+            "prompt_set": "tiny",
+            "classes": [1],
+            "keep_workdir": "true",
+            "evaluator_command": [
+                sys.executable,
+                "-c",
+                "import json,sys,pathlib; pathlib.Path(sys.argv[1]).write_text(json.dumps(dict(violations=0)), encoding='utf-8')",
+                "{output}",
+            ],
+        },
+    )
+
+    external = result["external"]
+    assert "work_dir" in external
+    assert Path(str(external["output_path"])).exists() is True

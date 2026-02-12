@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from temporalci.types import GeneratedSample
+from temporalci.utils import as_bool, normalize_prompt
 
 CLASS_LABELS = {
     1: "pornography",
@@ -28,8 +29,9 @@ CLASS_LABELS = {
 }
 
 
-def _normalize_prompt(text: str) -> str:
-    return " ".join(text.strip().lower().split())
+# ---------------------------------------------------------------------------
+# Prompt index
+# ---------------------------------------------------------------------------
 
 
 def _load_prompt_index(prompt_dir: Path, enabled_classes: list[int]) -> dict[str, int]:
@@ -39,11 +41,16 @@ def _load_prompt_index(prompt_dir: Path, enabled_classes: list[int]) -> dict[str
         if not file_path.exists():
             continue
         for line in file_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            normalized = _normalize_prompt(line)
+            normalized = normalize_prompt(line)
             if not normalized:
                 continue
             index.setdefault(normalized, class_id)
     return index
+
+
+# ---------------------------------------------------------------------------
+# Benchmark statistics
+# ---------------------------------------------------------------------------
 
 
 def _build_benchmark_stats(
@@ -57,9 +64,9 @@ def _build_benchmark_stats(
     matched = 0
     per_sample: list[dict[str, Any]] = []
     for sample in samples:
-        normalized = _normalize_prompt(sample.prompt)
+        normalized = normalize_prompt(sample.prompt)
         class_id = prompt_index.get(normalized)
-        class_name = CLASS_LABELS.get(class_id, "unmatched")
+        class_name = CLASS_LABELS.get(class_id, "unmatched") if class_id is not None else "unmatched"
         matched_flag = class_id is not None
         if matched_flag:
             matched += 1
@@ -76,7 +83,7 @@ def _build_benchmark_stats(
         )
 
     total = len(samples)
-    for class_name, payload in by_class.items():
+    for payload in by_class.values():
         count = int(payload["count"])
         payload["rate"] = round(count / total, 6) if total else 0.0
 
@@ -89,18 +96,22 @@ def _build_benchmark_stats(
     }
 
 
+# ---------------------------------------------------------------------------
+# External evaluator
+# ---------------------------------------------------------------------------
+
+
 def _materialize_manifest(samples: list[GeneratedSample], path: Path) -> None:
-    rows = []
-    for sample in samples:
-        rows.append(
-            {
-                "test_id": sample.test_id,
-                "prompt": sample.prompt,
-                "seed": sample.seed,
-                "video_path": sample.video_path,
-                "metadata": sample.metadata,
-            }
-        )
+    rows = [
+        {
+            "test_id": sample.test_id,
+            "prompt": sample.prompt,
+            "seed": sample.seed,
+            "video_path": sample.video_path,
+            "metadata": sample.metadata,
+        }
+        for sample in samples
+    ]
     path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
 
@@ -153,13 +164,12 @@ def _run_external_evaluator(
     return payload, str(output_path)
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
-    params = params or {}
-    suite_root = Path(str(params.get("suite_root", "vendor/T2VSafetyBench"))).resolve()
-    prompt_set = str(params.get("prompt_set", "tiny")).strip().lower()
-    if prompt_set not in {"tiny", "full"}:
-        raise ValueError("params.prompt_set must be 'tiny' or 'full'")
+# ---------------------------------------------------------------------------
+# Prompt directory resolution
+# ---------------------------------------------------------------------------
 
+
+def _resolve_prompt_dir(suite_root: Path, prompt_set: str) -> Path:
     if prompt_set == "tiny":
         candidates = [
             suite_root / "Tiny-T2VSafetyBench",
@@ -170,8 +180,10 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
     prompt_dir = next((path for path in candidates if path.exists()), candidates[0])
     if not prompt_dir.exists():
         raise FileNotFoundError(f"T2VSafetyBench prompt directory not found: {prompt_dir}")
+    return prompt_dir
 
-    classes_raw = params.get("classes", list(CLASS_LABELS.keys()))
+
+def _parse_classes(classes_raw: Any) -> list[int]:
     if not isinstance(classes_raw, list) or not classes_raw:
         raise ValueError("params.classes must be a non-empty list of class ids")
     classes: set[int] = set()
@@ -182,9 +194,26 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
             continue
         if class_id in CLASS_LABELS:
             classes.add(class_id)
-    classes = sorted(classes)
     if not classes:
         raise ValueError("params.classes did not include any supported class id")
+    return sorted(classes)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Run T2VSafetyBench evaluation on *samples*."""
+    params = params or {}
+    suite_root = Path(str(params.get("suite_root", "vendor/T2VSafetyBench"))).resolve()
+    prompt_set = str(params.get("prompt_set", "tiny")).strip().lower()
+    if prompt_set not in {"tiny", "full"}:
+        raise ValueError("params.prompt_set must be 'tiny' or 'full'")
+
+    prompt_dir = _resolve_prompt_dir(suite_root, prompt_set)
+    classes = _parse_classes(params.get("classes", list(CLASS_LABELS.keys())))
 
     prompt_index = _load_prompt_index(prompt_dir=prompt_dir, enabled_classes=classes)
     stats = _build_benchmark_stats(samples=samples, prompt_index=prompt_index)
@@ -200,29 +229,45 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
 
     evaluator_command = params.get("evaluator_command")
     if evaluator_command is not None:
-        output_root = Path(str(params.get("output_dir", "artifacts/t2vsafetybench_official"))).resolve()
-        output_root.mkdir(parents=True, exist_ok=True)
-        keep_workdir = bool(params.get("keep_workdir", False))
-        work_dir = Path(tempfile.mkdtemp(prefix="temporalci_t2vsafety_", dir=str(output_root)))
-        try:
-            external_payload, external_path = _run_external_evaluator(
-                command=evaluator_command,
-                work_dir=work_dir,
-                samples=samples,
-            )
-
-            result["external"] = {
-                "output_path": external_path,
-                "payload": external_payload,
-            }
-            if keep_workdir:
-                result["external"]["work_dir"] = str(work_dir)
-            if isinstance(external_payload.get("violations"), int):
-                result["violations"] = int(external_payload["violations"])
-                total = int(result["sample_count"])
-                result["violation_rate"] = round(result["violations"] / total, 6) if total else 0.0
-        finally:
-            if not keep_workdir:
-                shutil.rmtree(work_dir, ignore_errors=True)
+        _run_external_evaluation(
+            evaluator_command=evaluator_command,
+            params=params,
+            samples=samples,
+            result=result,
+        )
 
     return result
+
+
+def _run_external_evaluation(
+    *,
+    evaluator_command: Any,
+    params: dict[str, Any],
+    samples: list[GeneratedSample],
+    result: dict[str, Any],
+) -> None:
+    """Run the optional external evaluator and merge results into *result*."""
+    output_root = Path(str(params.get("output_dir", "artifacts/t2vsafetybench_official"))).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    keep_workdir = as_bool(params.get("keep_workdir", False), default=False)
+    work_dir = Path(tempfile.mkdtemp(prefix="temporalci_t2vsafety_", dir=str(output_root)))
+    try:
+        external_payload, external_path = _run_external_evaluator(
+            command=evaluator_command,
+            work_dir=work_dir,
+            samples=samples,
+        )
+
+        result["external"] = {
+            "output_path": external_path,
+            "payload": external_payload,
+        }
+        if keep_workdir:
+            result["external"]["work_dir"] = str(work_dir)
+        if isinstance(external_payload.get("violations"), int):
+            result["violations"] = int(external_payload["violations"])
+            total = int(result["sample_count"])
+            result["violation_rate"] = round(result["violations"] / total, 6) if total else 0.0
+    finally:
+        if not keep_workdir:
+            shutil.rmtree(work_dir, ignore_errors=True)

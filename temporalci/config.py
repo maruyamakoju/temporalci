@@ -6,35 +6,36 @@ from typing import Any
 import yaml
 
 from temporalci.constants import GATE_OPERATORS
-from temporalci.prompt_sources import PromptSourceError
+from temporalci.errors import ConfigError
 from temporalci.prompt_sources import expand_prompt_source
-from temporalci.types import GateSpec
-from temporalci.types import MetricSpec
-from temporalci.types import ModelSpec
-from temporalci.types import SuiteSpec
-from temporalci.types import TestSpec
+from temporalci.types import GateSpec, MetricSpec, ModelSpec, SuiteSpec, TestSpec
+from temporalci.utils import as_bool, dedupe_prompts, resolve_path
+
+# Backward-compatible alias so existing callers can still
+# ``from temporalci.config import SuiteValidationError``.
+SuiteValidationError = ConfigError
 
 
-class SuiteValidationError(ValueError):
-    pass
-
+# ---------------------------------------------------------------------------
+# Small validation helpers
+# ---------------------------------------------------------------------------
 
 def _require_dict(value: Any, field_name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise SuiteValidationError(f"'{field_name}' must be a mapping")
+        raise ConfigError(f"'{field_name}' must be a mapping")
     return value
 
 
 def _require_list(value: Any, field_name: str) -> list[Any]:
     if not isinstance(value, list):
-        raise SuiteValidationError(f"'{field_name}' must be a list")
+        raise ConfigError(f"'{field_name}' must be a list")
     return value
 
 
 def _require_non_empty_list(value: Any, field_name: str) -> list[Any]:
     items = _require_list(value, field_name)
     if not items:
-        raise SuiteValidationError(f"'{field_name}' cannot be empty")
+        raise ConfigError(f"'{field_name}' cannot be empty")
     return items
 
 
@@ -44,11 +45,11 @@ def _coerce_int_list(values: list[Any], field_name: str) -> list[int]:
         try:
             coerced.append(int(item))
         except (TypeError, ValueError) as exc:
-            raise SuiteValidationError(
+            raise ConfigError(
                 f"'{field_name}[{idx}]' must be an integer"
             ) from exc
     if not coerced:
-        raise SuiteValidationError(f"'{field_name}' cannot be empty")
+        raise ConfigError(f"'{field_name}' cannot be empty")
     return coerced
 
 
@@ -56,41 +57,19 @@ def _coerce_str_list(values: list[Any], field_name: str) -> list[str]:
     coerced: list[str] = []
     for idx, item in enumerate(values):
         if not isinstance(item, str):
-            raise SuiteValidationError(f"'{field_name}[{idx}]' must be a string")
+            raise ConfigError(f"'{field_name}[{idx}]' must be a string")
         value = item.strip()
         if not value:
-            raise SuiteValidationError(f"'{field_name}[{idx}]' cannot be empty")
+            raise ConfigError(f"'{field_name}[{idx}]' cannot be empty")
         coerced.append(value)
     if not coerced:
-        raise SuiteValidationError(f"'{field_name}' cannot be empty")
+        raise ConfigError(f"'{field_name}' cannot be empty")
     return coerced
 
 
-def _dedupe_prompts(prompts: list[str]) -> list[str]:
-    unique: list[str] = []
-    seen: set[str] = set()
-    for prompt in prompts:
-        normalized = " ".join(prompt.split())
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique.append(prompt)
-    return unique
-
-
-def _resolve_path_like(raw_path: str, *, suite_dir: Path) -> str:
-    path = Path(raw_path.strip())
-    if not path.is_absolute():
-        suite_candidate = (suite_dir / path).resolve()
-        cwd_candidate = (Path.cwd() / path).resolve()
-        if suite_candidate.exists():
-            path = suite_candidate
-        elif cwd_candidate.exists():
-            path = cwd_candidate
-        else:
-            path = suite_candidate
-    return str(path)
-
+# ---------------------------------------------------------------------------
+# Init-image field normalization
+# ---------------------------------------------------------------------------
 
 def _normalize_init_image_fields(
     *,
@@ -102,23 +81,30 @@ def _normalize_init_image_fields(
 
     init_image = normalized.get("init_image")
     if isinstance(init_image, str) and init_image.strip():
-        normalized["init_image"] = _resolve_path_like(init_image, suite_dir=suite_dir)
+        normalized["init_image"] = str(resolve_path(init_image, suite_dir=suite_dir))
 
     init_images = normalized.get("init_images")
     if isinstance(init_images, list):
         resolved: list[str] = []
         for idx, item in enumerate(init_images):
             if not isinstance(item, str):
-                raise SuiteValidationError(
+                raise ConfigError(
                     f"'{field_prefix}.init_images[{idx}]' must be a string path"
                 )
             value = item.strip()
             if not value:
                 continue
-            resolved.append(_resolve_path_like(value, suite_dir=suite_dir))
+            resolved.append(str(resolve_path(value, suite_dir=suite_dir)))
         normalized["init_images"] = resolved
 
     return normalized
+
+
+# ---------------------------------------------------------------------------
+# Artifacts config parsing
+# ---------------------------------------------------------------------------
+
+_ALLOWED_VIDEO_POLICIES = {"all", "failures_only", "none"}
 
 
 def _parse_artifacts(raw: Any) -> dict[str, Any]:
@@ -128,34 +114,38 @@ def _parse_artifacts(raw: Any) -> dict[str, Any]:
 
     parsed: dict[str, Any] = {}
     video_policy = str(artifacts.get("video", "all")).strip().lower()
-    allowed_video_policies = {"all", "failures_only", "none"}
-    if video_policy not in allowed_video_policies:
-        allowed = ", ".join(sorted(allowed_video_policies))
-        raise SuiteValidationError(f"'artifacts.video' must be one of: {allowed}")
+    if video_policy not in _ALLOWED_VIDEO_POLICIES:
+        allowed = ", ".join(sorted(_ALLOWED_VIDEO_POLICIES))
+        raise ConfigError(f"'artifacts.video' must be one of: {allowed}")
     parsed["video"] = video_policy
 
     if "max_samples" in artifacts:
         max_samples = int(artifacts["max_samples"])
         if max_samples <= 0:
-            raise SuiteValidationError("'artifacts.max_samples' must be > 0")
+            raise ConfigError("'artifacts.max_samples' must be > 0")
         parsed["max_samples"] = max_samples
 
     if "encode" in artifacts:
         encode = str(artifacts["encode"]).strip().lower()
         if encode not in {"h264", "h265"}:
-            raise SuiteValidationError("'artifacts.encode' must be 'h264' or 'h265'")
+            raise ConfigError("'artifacts.encode' must be 'h264' or 'h265'")
         parsed["encode"] = encode
 
     if "keep_workdir" in artifacts:
-        parsed["keep_workdir"] = bool(artifacts["keep_workdir"])
+        parsed["keep_workdir"] = as_bool(artifacts["keep_workdir"], default=False)
 
     return parsed
 
 
+# ---------------------------------------------------------------------------
+# Suite loading
+# ---------------------------------------------------------------------------
+
 def load_suite(path: str | Path) -> SuiteSpec:
+    """Load and validate a suite YAML file, returning a :class:`SuiteSpec`."""
     suite_path = Path(path)
     if not suite_path.exists():
-        raise SuiteValidationError(f"suite file does not exist: {suite_path}")
+        raise ConfigError(f"suite file does not exist: {suite_path}")
     suite_dir = suite_path.parent.resolve()
 
     with suite_path.open("r", encoding="utf-8") as handle:
@@ -165,136 +155,20 @@ def load_suite(path: str | Path) -> SuiteSpec:
 
     version = int(root.get("version", 0))
     if version != 1:
-        raise SuiteValidationError(f"unsupported suite version: {version}")
+        raise ConfigError(f"unsupported suite version: {version}")
 
     project = str(root.get("project", "")).strip()
     if not project:
-        raise SuiteValidationError("'project' is required")
+        raise ConfigError("'project' is required")
 
     suite_name = str(root.get("suite_name", "")).strip()
     if not suite_name:
-        raise SuiteValidationError("'suite_name' is required")
+        raise ConfigError("'suite_name' is required")
 
-    raw_models = _require_non_empty_list(root.get("models"), "models")
-    models: list[ModelSpec] = []
-    seen_models: set[str] = set()
-    for i, raw_model in enumerate(raw_models):
-        model = _require_dict(raw_model, f"models[{i}]")
-        name = str(model.get("name", "")).strip()
-        adapter = str(model.get("adapter", "")).strip()
-        if not name:
-            raise SuiteValidationError(f"'models[{i}].name' is required")
-        if not adapter:
-            raise SuiteValidationError(f"'models[{i}].adapter' is required")
-        if name in seen_models:
-            raise SuiteValidationError(f"duplicate model name: {name}")
-        seen_models.add(name)
-        params_raw = model.get("params", {})
-        params = _require_dict(params_raw, f"models[{i}].params") if params_raw else {}
-        params = _normalize_init_image_fields(
-            mapping=params,
-            suite_dir=suite_dir,
-            field_prefix=f"models[{i}].params",
-        )
-        models.append(ModelSpec(name=name, adapter=adapter, params=params))
-
-    raw_tests = _require_non_empty_list(root.get("tests"), "tests")
-    tests: list[TestSpec] = []
-    seen_tests: set[str] = set()
-    supported_test_types = {"generation"}
-    for i, raw_test in enumerate(raw_tests):
-        test = _require_dict(raw_test, f"tests[{i}]")
-        test_id = str(test.get("id", "")).strip()
-        test_type = str(test.get("type", "")).strip() or "generation"
-        if not test_id:
-            raise SuiteValidationError(f"'tests[{i}].id' is required")
-        if test_type not in supported_test_types:
-            allowed = ", ".join(sorted(supported_test_types))
-            raise SuiteValidationError(
-                f"'tests[{i}].type' must be one of: {allowed}"
-            )
-        if test_id in seen_tests:
-            raise SuiteValidationError(f"duplicate test id: {test_id}")
-        seen_tests.add(test_id)
-
-        prompts: list[str] = []
-        if "prompts" in test and test.get("prompts") is not None:
-            prompts.extend(
-                _coerce_str_list(
-                    _require_list(test.get("prompts"), f"tests[{i}].prompts"),
-                    f"tests[{i}].prompts",
-                )
-            )
-        if "prompt_source" in test and test.get("prompt_source") is not None:
-            source = _require_dict(test.get("prompt_source"), f"tests[{i}].prompt_source")
-            try:
-                expanded = expand_prompt_source(source=source, suite_dir=suite_dir)
-            except PromptSourceError as exc:
-                raise SuiteValidationError(f"'tests[{i}].prompt_source' invalid: {exc}") from exc
-            prompts.extend(expanded)
-
-        prompts = _dedupe_prompts(prompts)
-        if not prompts:
-            raise SuiteValidationError(
-                f"'tests[{i}]' requires non-empty 'prompts' or valid 'prompt_source'"
-            )
-
-        seeds_raw = test.get("seeds", [0])
-        seeds = _coerce_int_list(
-            _require_list(seeds_raw, f"tests[{i}].seeds"),
-            f"tests[{i}].seeds",
-        )
-        video_raw = test.get("video", {})
-        video = _require_dict(video_raw, f"tests[{i}].video") if video_raw else {}
-        video = _normalize_init_image_fields(
-            mapping=video,
-            suite_dir=suite_dir,
-            field_prefix=f"tests[{i}].video",
-        )
-        tests.append(
-            TestSpec(
-                id=test_id,
-                type=test_type,
-                prompts=prompts,
-                seeds=seeds,
-                video=video,
-            )
-        )
-
-    raw_metrics = _require_non_empty_list(root.get("metrics"), "metrics")
-    metrics: list[MetricSpec] = []
-    seen_metric_names: set[str] = set()
-    for i, raw_metric in enumerate(raw_metrics):
-        metric = _require_dict(raw_metric, f"metrics[{i}]")
-        name = str(metric.get("name", "")).strip()
-        if not name:
-            raise SuiteValidationError(f"'metrics[{i}].name' is required")
-        if name in seen_metric_names:
-            raise SuiteValidationError(f"duplicate metric name: {name}")
-        seen_metric_names.add(name)
-        params_raw = metric.get("params", {})
-        params = _require_dict(params_raw, f"metrics[{i}].params") if params_raw else {}
-        metrics.append(MetricSpec(name=name, params=params))
-
-    raw_gates = _require_non_empty_list(root.get("gates"), "gates")
-    gates: list[GateSpec] = []
-    for i, raw_gate in enumerate(raw_gates):
-        gate = _require_dict(raw_gate, f"gates[{i}]")
-        metric_path = str(gate.get("metric", "")).strip()
-        op = str(gate.get("op", "")).strip()
-        if not metric_path:
-            raise SuiteValidationError(f"'gates[{i}].metric' is required")
-        if not op:
-            raise SuiteValidationError(f"'gates[{i}].op' is required")
-        if op not in GATE_OPERATORS:
-            available = ", ".join(sorted(GATE_OPERATORS))
-            raise SuiteValidationError(
-                f"'gates[{i}].op' must be one of: {available}"
-            )
-        if "value" not in gate:
-            raise SuiteValidationError(f"'gates[{i}].value' is required")
-        gates.append(GateSpec(metric=metric_path, op=op, value=gate["value"]))
-
+    models = _parse_models(root, suite_dir)
+    tests = _parse_tests(root, suite_dir)
+    metrics = _parse_metrics(root)
+    gates = _parse_gates(root)
     artifacts = _parse_artifacts(root.get("artifacts"))
 
     return SuiteSpec(
@@ -309,11 +183,145 @@ def load_suite(path: str | Path) -> SuiteSpec:
     )
 
 
+def _parse_models(root: dict[str, Any], suite_dir: Path) -> list[ModelSpec]:
+    raw_models = _require_non_empty_list(root.get("models"), "models")
+    models: list[ModelSpec] = []
+    seen: set[str] = set()
+    for i, raw_model in enumerate(raw_models):
+        model = _require_dict(raw_model, f"models[{i}]")
+        name = str(model.get("name", "")).strip()
+        adapter = str(model.get("adapter", "")).strip()
+        if not name:
+            raise ConfigError(f"'models[{i}].name' is required")
+        if not adapter:
+            raise ConfigError(f"'models[{i}].adapter' is required")
+        if name in seen:
+            raise ConfigError(f"duplicate model name: {name}")
+        seen.add(name)
+        params_raw = model.get("params", {})
+        params = _require_dict(params_raw, f"models[{i}].params") if params_raw else {}
+        params = _normalize_init_image_fields(
+            mapping=params,
+            suite_dir=suite_dir,
+            field_prefix=f"models[{i}].params",
+        )
+        models.append(ModelSpec(name=name, adapter=adapter, params=params))
+    return models
+
+
+def _parse_tests(root: dict[str, Any], suite_dir: Path) -> list[TestSpec]:
+    raw_tests = _require_non_empty_list(root.get("tests"), "tests")
+    tests: list[TestSpec] = []
+    seen: set[str] = set()
+    supported_types = {"generation"}
+
+    for i, raw_test in enumerate(raw_tests):
+        test = _require_dict(raw_test, f"tests[{i}]")
+        test_id = str(test.get("id", "")).strip()
+        test_type = str(test.get("type", "")).strip() or "generation"
+        if not test_id:
+            raise ConfigError(f"'tests[{i}].id' is required")
+        if test_type not in supported_types:
+            allowed = ", ".join(sorted(supported_types))
+            raise ConfigError(f"'tests[{i}].type' must be one of: {allowed}")
+        if test_id in seen:
+            raise ConfigError(f"duplicate test id: {test_id}")
+        seen.add(test_id)
+
+        prompts = _collect_prompts(test, i, suite_dir)
+        seeds_raw = test.get("seeds", [0])
+        seeds = _coerce_int_list(
+            _require_list(seeds_raw, f"tests[{i}].seeds"),
+            f"tests[{i}].seeds",
+        )
+        video_raw = test.get("video", {})
+        video = _require_dict(video_raw, f"tests[{i}].video") if video_raw else {}
+        video = _normalize_init_image_fields(
+            mapping=video,
+            suite_dir=suite_dir,
+            field_prefix=f"tests[{i}].video",
+        )
+        tests.append(
+            TestSpec(id=test_id, type=test_type, prompts=prompts, seeds=seeds, video=video)
+        )
+    return tests
+
+
+def _collect_prompts(test: dict[str, Any], index: int, suite_dir: Path) -> list[str]:
+    prompts: list[str] = []
+    if "prompts" in test and test.get("prompts") is not None:
+        prompts.extend(
+            _coerce_str_list(
+                _require_list(test.get("prompts"), f"tests[{index}].prompts"),
+                f"tests[{index}].prompts",
+            )
+        )
+    if "prompt_source" in test and test.get("prompt_source") is not None:
+        source = _require_dict(test.get("prompt_source"), f"tests[{index}].prompt_source")
+        try:
+            expanded = expand_prompt_source(source=source, suite_dir=suite_dir)
+        except ConfigError:
+            raise
+        except Exception as exc:
+            raise ConfigError(f"'tests[{index}].prompt_source' invalid: {exc}") from exc
+        prompts.extend(expanded)
+
+    prompts = dedupe_prompts(prompts)
+    if not prompts:
+        raise ConfigError(
+            f"'tests[{index}]' requires non-empty 'prompts' or valid 'prompt_source'"
+        )
+    return prompts
+
+
+def _parse_metrics(root: dict[str, Any]) -> list[MetricSpec]:
+    raw_metrics = _require_non_empty_list(root.get("metrics"), "metrics")
+    metrics: list[MetricSpec] = []
+    seen: set[str] = set()
+    for i, raw_metric in enumerate(raw_metrics):
+        metric = _require_dict(raw_metric, f"metrics[{i}]")
+        name = str(metric.get("name", "")).strip()
+        if not name:
+            raise ConfigError(f"'metrics[{i}].name' is required")
+        if name in seen:
+            raise ConfigError(f"duplicate metric name: {name}")
+        seen.add(name)
+        params_raw = metric.get("params", {})
+        params = _require_dict(params_raw, f"metrics[{i}].params") if params_raw else {}
+        metrics.append(MetricSpec(name=name, params=params))
+    return metrics
+
+
+def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
+    raw_gates = _require_non_empty_list(root.get("gates"), "gates")
+    gates: list[GateSpec] = []
+    for i, raw_gate in enumerate(raw_gates):
+        gate = _require_dict(raw_gate, f"gates[{i}]")
+        metric_path = str(gate.get("metric", "")).strip()
+        op = str(gate.get("op", "")).strip()
+        if not metric_path:
+            raise ConfigError(f"'gates[{i}].metric' is required")
+        if not op:
+            raise ConfigError(f"'gates[{i}].op' is required")
+        if op not in GATE_OPERATORS:
+            available = ", ".join(sorted(GATE_OPERATORS))
+            raise ConfigError(f"'gates[{i}].op' must be one of: {available}")
+        if "value" not in gate:
+            raise ConfigError(f"'gates[{i}].value' is required")
+        gates.append(GateSpec(metric=metric_path, op=op, value=gate["value"]))
+    return gates
+
+
+# ---------------------------------------------------------------------------
+# Model selection
+# ---------------------------------------------------------------------------
+
 def select_model(suite: SuiteSpec, name: str | None) -> ModelSpec:
+    """Select a model from *suite* by *name*, defaulting to the first."""
     if name is None:
         return suite.models[0]
     for model in suite.models:
         if model.name == name:
             return model
     available = ", ".join(m.name for m in suite.models)
-    raise SuiteValidationError(f"model '{name}' not found. available: {available}")
+    raise ConfigError(f"model '{name}' not found. available: {available}")

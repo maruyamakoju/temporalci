@@ -7,20 +7,18 @@ import shutil
 import time
 import traceback
 import urllib.request
-from datetime import datetime
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from temporalci.config import load_suite
-from temporalci.config import select_model
+from temporalci.config import load_suite, select_model
 from temporalci.engine import run_suite
-from temporalci.autopilot_utils import atomic_write_json
-from temporalci.autopilot_utils import utc_now_iso
+from temporalci.utils import safe_write_json, utc_now_iso
 
 
-def _utc_now_iso() -> str:
-    return utc_now_iso()
+# ---------------------------------------------------------------------------
+# HTTP helper
+# ---------------------------------------------------------------------------
 
 
 def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -34,15 +32,14 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    atomic_write_json(path, payload)
+# ---------------------------------------------------------------------------
+# Safe I/O wrappers
+# ---------------------------------------------------------------------------
 
 
 def _safe_write_json(path: Path, payload: dict[str, Any]) -> None:
-    try:
-        _write_json(path, payload)
-    except Exception as exc:  # noqa: BLE001
-        print(f"warning: failed to write status file {path}: {exc}", flush=True)
+    if not safe_write_json(path, payload):
+        print(f"warning: failed to write status file {path}", flush=True)
 
 
 def _safe_append_jsonl(path: Path, payload: dict[str, Any]) -> None:
@@ -59,10 +56,13 @@ def _safe_remove_pid_file(path: Path | None) -> None:
         return
     try:
         path.unlink()
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         return
-    except OSError:
-        return
+
+
+# ---------------------------------------------------------------------------
+# Memory management
+# ---------------------------------------------------------------------------
 
 
 def _safe_release_runtime_memory(*, clear_cuda_cache: bool) -> dict[str, Any]:
@@ -88,23 +88,9 @@ def _safe_release_runtime_memory(*, clear_cuda_cache: bool) -> dict[str, Any]:
     return payload
 
 
-def _write_terminal_status(
-    *,
-    status_path: Path,
-    state: str,
-    cycle: int,
-    deadline: float,
-    stop_reason: str | None = None,
-) -> None:
-    payload: dict[str, Any] = {
-        "state": state,
-        "finished_at_utc": _utc_now_iso(),
-        "cycle": cycle,
-        "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
-    }
-    if stop_reason:
-        payload["stop_reason"] = stop_reason
-    _safe_write_json(status_path, payload)
+# ---------------------------------------------------------------------------
+# Run directory pruning
+# ---------------------------------------------------------------------------
 
 
 def _prune_model_runs(*, model_root: Path, keep_last: int) -> dict[str, Any]:
@@ -137,6 +123,11 @@ def _prune_model_runs(*, model_root: Path, keep_last: int) -> dict[str, Any]:
         "deleted": len(deleted_run_ids),
         "deleted_run_ids": deleted_run_ids,
     }
+
+
+# ---------------------------------------------------------------------------
+# Gate pair runner
+# ---------------------------------------------------------------------------
 
 
 def _run_gate_pair(
@@ -185,7 +176,140 @@ def _run_gate_pair(
     }
 
 
-def main() -> int:
+# ---------------------------------------------------------------------------
+# Status helpers
+# ---------------------------------------------------------------------------
+
+
+def _write_terminal_status(
+    *,
+    status_path: Path,
+    state: str,
+    cycle: int,
+    deadline: float,
+    stop_reason: str | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "state": state,
+        "finished_at_utc": utc_now_iso(),
+        "cycle": cycle,
+        "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
+    }
+    if stop_reason:
+        payload["stop_reason"] = stop_reason
+    _safe_write_json(status_path, payload)
+
+
+# ---------------------------------------------------------------------------
+# Single cycle execution
+# ---------------------------------------------------------------------------
+
+
+def _run_cycle(
+    *,
+    cycle: int,
+    args: argparse.Namespace,
+    baseline_suite_path: Path,
+    candidate_suite_path: Path,
+    artifacts_dir: Path,
+    log_path: Path,
+    status_path: Path,
+    deadline: float,
+    model_root_for_cleanup: Path | None,
+) -> str | None:
+    """Execute one autopilot cycle. Returns a stop reason, or ``None`` to continue."""
+    cycle_payload: dict[str, Any] = {
+        "cycle": cycle,
+        "started_at_utc": utc_now_iso(),
+        "baseline_suite": str(baseline_suite_path),
+        "candidate_suite": str(candidate_suite_path),
+        "artifacts_dir": str(artifacts_dir),
+    }
+    _safe_write_json(
+        status_path,
+        {
+            "state": "running",
+            "started_at_utc": cycle_payload["started_at_utc"],
+            "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
+            "cycle": cycle,
+            "phase": "cycle_start",
+        },
+    )
+    _safe_append_jsonl(log_path, {"event": "cycle_start", **cycle_payload})
+
+    stop_reason: str | None = None
+    try:
+        result = _run_gate_pair(
+            baseline_suite_path=baseline_suite_path,
+            candidate_suite_path=candidate_suite_path,
+            artifacts_dir=artifacts_dir,
+            model_name=args.model,
+        )
+        cycle_payload["result"] = result
+        cycle_payload["status"] = "ok"
+        print(
+            f"cycle={cycle} baseline={result['baseline']['status']} "
+            f"candidate={result['candidate']['status']} exit={result['exit_code']}",
+            flush=True,
+        )
+
+        if args.stop_on_unexpected_pass and result["exit_code"] == 0:
+            stop_reason = "unexpected_candidate_pass"
+            cycle_payload["stop_reason"] = stop_reason
+    except Exception as exc:  # noqa: BLE001
+        cycle_payload["status"] = "error"
+        cycle_payload["error"] = str(exc)
+        cycle_payload["traceback"] = traceback.format_exc()
+        print(f"cycle={cycle} error={exc}", flush=True)
+
+    # Requeue stale tasks in coordinator if configured
+    if args.coordinator_url:
+        try:
+            payload = _post_json(
+                f"{args.coordinator_url.rstrip('/')}/admin/requeue_stale?limit=100",
+                {},
+            )
+            cycle_payload["requeue_stale"] = payload
+        except Exception as exc:  # noqa: BLE001
+            cycle_payload["requeue_stale_error"] = str(exc)
+
+    # Prune old runs
+    if model_root_for_cleanup is not None:
+        cycle_payload["cleanup"] = _prune_model_runs(
+            model_root=model_root_for_cleanup,
+            keep_last=int(args.keep_last_runs),
+        )
+
+    # Release memory
+    if not args.skip_memory_cleanup:
+        cycle_payload["memory_cleanup"] = _safe_release_runtime_memory(clear_cuda_cache=True)
+
+    cycle_payload["finished_at_utc"] = utc_now_iso()
+    _safe_append_jsonl(log_path, {"event": "cycle_end", **cycle_payload})
+    _safe_write_json(
+        status_path,
+        {
+            "state": "running",
+            "finished_at_utc": cycle_payload["finished_at_utc"],
+            "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
+            "cycle": cycle,
+            "phase": "cycle_end",
+            "last_status": cycle_payload.get("status"),
+            "last_result": cycle_payload.get("result"),
+            "last_error": cycle_payload.get("error"),
+            "last_cleanup": cycle_payload.get("cleanup"),
+            "last_memory_cleanup": cycle_payload.get("memory_cleanup"),
+        },
+    )
+    return stop_reason
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Unattended long-run autopilot for TemporalCI regression-gate demos."
     )
@@ -197,38 +321,35 @@ def main() -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--artifacts-dir", default="artifacts/autopilot")
     parser.add_argument(
-        "--pid-file",
-        default="",
+        "--pid-file", default="",
         help="Optional pid metadata file to delete when autopilot exits.",
     )
     parser.add_argument("--log-file", default="autopilot_runs.jsonl")
     parser.add_argument(
-        "--status-file",
-        default="autopilot_status.json",
+        "--status-file", default="autopilot_status.json",
         help="Status heartbeat JSON file written each cycle under artifacts dir.",
     )
     parser.add_argument(
-        "--keep-last-runs",
-        type=int,
-        default=0,
+        "--keep-last-runs", type=int, default=0,
         help="If >0, keep only the latest N run directories per model root.",
     )
     parser.add_argument(
-        "--stop-on-unexpected-pass",
-        action="store_true",
+        "--stop-on-unexpected-pass", action="store_true",
         help="Stop if candidate unexpectedly passes (exit_code=0).",
     )
     parser.add_argument(
-        "--coordinator-url",
-        default="",
+        "--coordinator-url", default="",
         help="If set, call /admin/requeue_stale each cycle for distributed recovery.",
     )
     parser.add_argument(
-        "--skip-memory-cleanup",
-        action="store_true",
+        "--skip-memory-cleanup", action="store_true",
         help="Disable per-cycle gc/cuda cache cleanup.",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
 
     baseline_suite_path = Path(args.baseline).resolve()
     candidate_suite_path = Path(args.candidate).resolve()
@@ -236,10 +357,7 @@ def main() -> int:
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     log_path = artifacts_dir / args.log_file
     status_path_raw = Path(args.status_file)
-    if status_path_raw.is_absolute():
-        status_path = status_path_raw
-    else:
-        status_path = artifacts_dir / status_path_raw
+    status_path = status_path_raw if status_path_raw.is_absolute() else artifacts_dir / status_path_raw
     pid_path: Path | None = None
     if args.pid_file:
         pid_path_raw = Path(args.pid_file)
@@ -275,7 +393,7 @@ def main() -> int:
         status_path,
         {
             "state": "running",
-            "started_at_utc": _utc_now_iso(),
+            "started_at_utc": utc_now_iso(),
             "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
             "cycle": cycle,
             "artifacts_dir": str(artifacts_dir),
@@ -290,94 +408,27 @@ def main() -> int:
 
         cycle += 1
         started = time.time()
-        cycle_payload: dict[str, Any] = {
-            "cycle": cycle,
-            "started_at_utc": _utc_now_iso(),
-            "baseline_suite": str(baseline_suite_path),
-            "candidate_suite": str(candidate_suite_path),
-            "artifacts_dir": str(artifacts_dir),
-        }
-        _safe_write_json(
-            status_path,
-            {
-                "state": "running",
-                "started_at_utc": cycle_payload["started_at_utc"],
-                "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
-                "cycle": cycle,
-                "phase": "cycle_start",
-            },
+
+        stop_reason = _run_cycle(
+            cycle=cycle,
+            args=args,
+            baseline_suite_path=baseline_suite_path,
+            candidate_suite_path=candidate_suite_path,
+            artifacts_dir=artifacts_dir,
+            log_path=log_path,
+            status_path=status_path,
+            deadline=deadline,
+            model_root_for_cleanup=model_root_for_cleanup,
         )
-        _safe_append_jsonl(log_path, {"event": "cycle_start", **cycle_payload})
-        try:
-            result = _run_gate_pair(
-                baseline_suite_path=baseline_suite_path,
-                candidate_suite_path=candidate_suite_path,
-                artifacts_dir=artifacts_dir,
-                model_name=args.model,
+
+        if stop_reason is not None:
+            _write_terminal_status(
+                status_path=status_path, state="finished",
+                cycle=cycle, deadline=deadline, stop_reason=stop_reason,
             )
-            cycle_payload["result"] = result
-            cycle_payload["status"] = "ok"
-            print(
-                f"cycle={cycle} baseline={result['baseline']['status']} "
-                f"candidate={result['candidate']['status']} exit={result['exit_code']}",
-                flush=True,
-            )
-
-            if args.stop_on_unexpected_pass and result["exit_code"] == 0:
-                cycle_payload["stop_reason"] = "unexpected_candidate_pass"
-                cycle_payload["finished_at_utc"] = _utc_now_iso()
-                _safe_append_jsonl(log_path, {"event": "cycle_end", **cycle_payload})
-                _write_terminal_status(
-                    status_path=status_path,
-                    state="finished",
-                    cycle=cycle,
-                    deadline=deadline,
-                    stop_reason="unexpected_candidate_pass",
-                )
-                _safe_remove_pid_file(pid_path)
-                print("stopping: candidate unexpectedly passed", flush=True)
-                return 2
-        except Exception as exc:  # noqa: BLE001
-            cycle_payload["status"] = "error"
-            cycle_payload["error"] = str(exc)
-            cycle_payload["traceback"] = traceback.format_exc()
-            print(f"cycle={cycle} error={exc}", flush=True)
-
-        if args.coordinator_url:
-            try:
-                payload = _post_json(
-                    f"{args.coordinator_url.rstrip('/')}/admin/requeue_stale?limit=100",
-                    {},
-                )
-                cycle_payload["requeue_stale"] = payload
-            except Exception as exc:  # noqa: BLE001
-                cycle_payload["requeue_stale_error"] = str(exc)
-
-        if model_root_for_cleanup is not None:
-            cycle_payload["cleanup"] = _prune_model_runs(
-                model_root=model_root_for_cleanup,
-                keep_last=int(args.keep_last_runs),
-            )
-        if not args.skip_memory_cleanup:
-            cycle_payload["memory_cleanup"] = _safe_release_runtime_memory(clear_cuda_cache=True)
-
-        cycle_payload["finished_at_utc"] = _utc_now_iso()
-        _safe_append_jsonl(log_path, {"event": "cycle_end", **cycle_payload})
-        _safe_write_json(
-            status_path,
-            {
-                "state": "running",
-                "finished_at_utc": cycle_payload["finished_at_utc"],
-                "deadline_utc": datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat(),
-                "cycle": cycle,
-                "phase": "cycle_end",
-                "last_status": cycle_payload.get("status"),
-                "last_result": cycle_payload.get("result"),
-                "last_error": cycle_payload.get("error"),
-                "last_cleanup": cycle_payload.get("cleanup"),
-                "last_memory_cleanup": cycle_payload.get("memory_cleanup"),
-            },
-        )
+            _safe_remove_pid_file(pid_path)
+            print(f"stopping: {stop_reason}", flush=True)
+            return 2
 
         if int(args.max_cycles) > 0 and cycle >= int(args.max_cycles):
             break
@@ -391,10 +442,7 @@ def main() -> int:
 
     print("autopilot_finished", flush=True)
     _write_terminal_status(
-        status_path=status_path,
-        state="finished",
-        cycle=cycle,
-        deadline=deadline,
+        status_path=status_path, state="finished", cycle=cycle, deadline=deadline
     )
     _safe_remove_pid_file(pid_path)
     return 0

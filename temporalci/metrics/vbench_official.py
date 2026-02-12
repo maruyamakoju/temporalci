@@ -11,7 +11,9 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from temporalci.errors import MetricError
 from temporalci.types import GeneratedSample
+from temporalci.utils import as_bool, as_int, is_number
 
 SUPPORTED_VIDEO_SUFFIXES = {".mp4", ".gif", ".mov", ".mkv", ".avi", ".webm"}
 CUSTOM_INPUT_SUPPORTED_DIMS = {
@@ -22,51 +24,30 @@ CUSTOM_INPUT_SUPPORTED_DIMS = {
     "aesthetic_quality",
     "imaging_quality",
 }
-_TRUE_VALUES = {"1", "true", "yes", "y", "on"}
-_FALSE_VALUES = {"0", "false", "no", "n", "off"}
 
 
-def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _as_bool(value: Any, *, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in _TRUE_VALUES:
-            return True
-        if normalized in _FALSE_VALUES:
-            return False
-        return default
-    if _is_number(value):
-        return bool(value)
-    return default
-
-
-def _as_int(value: Any, *, default: int, minimum: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    if parsed < minimum:
-        return minimum
-    return parsed
+# ---------------------------------------------------------------------------
+# Dimension score extraction
+# ---------------------------------------------------------------------------
 
 
 def _extract_dimension_score(payload: Any) -> float | None:
-    if _is_number(payload):
+    if is_number(payload):
         return float(payload)
     if isinstance(payload, (list, tuple)) and payload:
         head = payload[0]
-        if _is_number(head):
+        if is_number(head):
             return float(head)
     if isinstance(payload, dict):
         score = payload.get("score")
-        if _is_number(score):
+        if score is not None and is_number(score):
             return float(score)
     return None
+
+
+# ---------------------------------------------------------------------------
+# VBench metadata helpers
+# ---------------------------------------------------------------------------
 
 
 def _resolve_full_info_json() -> str:
@@ -80,6 +61,11 @@ def _resolve_full_info_json() -> str:
             "Set params.full_info_json explicitly."
         )
     return str(candidate)
+
+
+# ---------------------------------------------------------------------------
+# Video materialization
+# ---------------------------------------------------------------------------
 
 
 def _materialize_video_inputs(
@@ -108,6 +94,11 @@ def _materialize_video_inputs(
     return copied, prompt_map
 
 
+# ---------------------------------------------------------------------------
+# Standard mode video path resolution
+# ---------------------------------------------------------------------------
+
+
 def _count_video_files(path: Path) -> int:
     count = 0
     for child in path.iterdir():
@@ -121,8 +112,7 @@ def _latest_video_mtime(path: Path) -> float:
     for child in path.iterdir():
         if not child.is_file() or child.suffix.lower() not in SUPPORTED_VIDEO_SUFFIXES:
             continue
-        stat = child.stat()
-        latest = max(latest, float(stat.st_mtime))
+        latest = max(latest, float(child.stat().st_mtime))
     if latest > 0.0:
         return latest
     return float(path.stat().st_mtime)
@@ -171,16 +161,12 @@ def _resolve_standard_videos_path(*, params: dict[str, Any]) -> tuple[Path, str]
             f"vbench_official auto videos root not found: {auto_root}. "
             "Set params.videos_path explicitly or create videos under the auto root."
         )
-    max_depth = _as_int(params.get("videos_auto_max_depth", 8), default=8, minimum=1)
-    max_candidates = _as_int(
-        params.get("videos_auto_max_candidates", 256),
-        default=256,
-        minimum=1,
+    max_depth = as_int(params.get("videos_auto_max_depth", 8), default=8, minimum=1)
+    max_candidates = as_int(
+        params.get("videos_auto_max_candidates", 256), default=256, minimum=1
     )
     candidates = _discover_video_dirs(
-        root=auto_root,
-        max_depth=max_depth,
-        max_candidates=max_candidates,
+        root=auto_root, max_depth=max_depth, max_candidates=max_candidates
     )
     if not candidates:
         raise FileNotFoundError(
@@ -188,6 +174,11 @@ def _resolve_standard_videos_path(*, params: dict[str, Any]) -> tuple[Path, str]
             f"{auto_root}. Set params.videos_path explicitly."
         )
     return candidates[0], "auto"
+
+
+# ---------------------------------------------------------------------------
+# wget shim for Windows
+# ---------------------------------------------------------------------------
 
 
 def _extract_wget_tokens(command: Any) -> list[str] | None:
@@ -276,13 +267,194 @@ def _ensure_wget_command(*, allow_wget_shim: bool) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Mode-specific evaluation runners
+# ---------------------------------------------------------------------------
+
+
+def _prepare_custom_input(
+    samples: list[GeneratedSample],
+    temp_dir: Path,
+) -> tuple[Path, Any, int]:
+    """Materialize videos for custom_input mode; return (videos_path, prompt_list, count)."""
+    videos_dir = temp_dir / "videos"
+    copied_videos, prompt_map = _materialize_video_inputs(samples=samples, target_dir=videos_dir)
+    if not copied_videos:
+        raise MetricError(
+            "vbench_official received no video files. "
+            f"Supported suffixes: {sorted(SUPPORTED_VIDEO_SUFFIXES)}"
+        )
+    return videos_dir, prompt_map, len(copied_videos)
+
+
+def _prepare_standard(params: dict[str, Any]) -> tuple[Path, str, int]:
+    """Resolve videos for standard mode; return (videos_path, source, count)."""
+    videos_path, source = _resolve_standard_videos_path(params=params)
+    sample_count = _count_video_files(videos_path)
+    return videos_path, source, sample_count
+
+
+def _invoke_vbench(
+    *,
+    VBench: Any,
+    temp_dir: Path,
+    videos_path: Path,
+    prompt_list: Any,
+    dimensions: list[str],
+    params: dict[str, Any],
+    vbench_mode: str,
+    use_windows_wget_patch: bool,
+) -> Path:
+    """Run VBench evaluation and return the result file path."""
+    full_info_json = str(params.get("full_info_json", "")).strip() or _resolve_full_info_json()
+    device = str(params.get("device", "cuda")).strip() or "cuda"
+    run_name = str(params.get("run_name", "temporalci")).strip() or "temporalci"
+    local = as_bool(params.get("load_ckpt_from_local", False), default=False)
+    read_frame = as_bool(params.get("read_frame", False), default=False)
+    allow_unsafe_torch_load = as_bool(params.get("allow_unsafe_torch_load", False), default=False)
+
+    def _noop_restore() -> None:
+        return None
+
+    restore_wget_patch = _noop_restore
+    if use_windows_wget_patch:
+        restore_wget_patch = _patch_vbench_wget_runner()
+
+    torch_env_key = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
+    torch_env_was_set = torch_env_key in os.environ
+    if allow_unsafe_torch_load and not torch_env_was_set:
+        os.environ[torch_env_key] = "1"
+
+    evaluator = VBench(device, full_info_json, str(temp_dir))
+    try:
+        try:
+            evaluator.evaluate(
+                videos_path=str(videos_path),
+                name=run_name,
+                prompt_list=prompt_list,
+                dimension_list=[str(dim) for dim in dimensions],
+                local=local,
+                read_frame=read_frame,
+                mode=vbench_mode,
+            )
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc)
+            if not allow_unsafe_torch_load and "Weights only load failed" in message:
+                raise MetricError(
+                    "vbench_official failed to load official checkpoint in safe mode. "
+                    "For trusted checkpoints only, rerun with "
+                    "`params.allow_unsafe_torch_load=true`."
+                ) from exc
+            raise
+    finally:
+        if allow_unsafe_torch_load and not torch_env_was_set:
+            os.environ.pop(torch_env_key, None)
+        restore_wget_patch()
+
+    result_path = temp_dir / f"{run_name}_eval_results.json"
+    if not result_path.exists():
+        raise FileNotFoundError(f"vbench result file not found: {result_path}")
+    return result_path
+
+
+def _parse_vbench_results(
+    result_path: Path,
+    dimensions: list[str],
+) -> tuple[float, dict[str, float]]:
+    """Read VBench result JSON and extract per-dimension scores."""
+    raw_payload = json.loads(result_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_payload, dict):
+        raise ValueError("vbench result file must be a JSON object")
+
+    dim_scores: dict[str, float] = {}
+    for dim in dimensions:
+        score = _extract_dimension_score(raw_payload.get(str(dim)))
+        if score is not None:
+            dim_scores[str(dim)] = round(score, 6)
+
+    total = mean(dim_scores.values()) if dim_scores else 0.0
+    return round(total, 6), dim_scores
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Run VBench official evaluation on *samples*."""
     params = params or {}
 
     mode = str(params.get("mode", "custom_input")).strip().lower()
     if mode not in {"custom_input", "standard"}:
         raise ValueError("vbench_official params.mode must be 'custom_input' or 'standard'")
 
+    dimensions = _validate_dimensions(params, mode)
+
+    try:
+        from vbench import VBench
+    except Exception as exc:  # noqa: BLE001
+        raise MetricError(
+            "vbench is not installed. Install official dependency with `pip install vbench`."
+        ) from exc
+
+    env_videos_path = str(os.getenv("RUN_VBENCH_VIDEOS_PATH", "")).strip()
+    if not params.get("videos_path") and env_videos_path:
+        params["videos_path"] = env_videos_path
+
+    output_root = Path(str(params.get("output_dir", "artifacts/vbench_official"))).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    allow_wget_shim = as_bool(params.get("allow_wget_shim", True), default=True)
+    use_windows_wget_patch = _ensure_wget_command(allow_wget_shim=allow_wget_shim)
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="temporalci_vbench_", dir=str(output_root)))
+    keep_workdir = as_bool(params.get("keep_workdir", False), default=False)
+
+    try:
+        if mode == "custom_input":
+            videos_path, prompt_list, sample_count = _prepare_custom_input(samples, temp_dir)
+            vbench_mode = "custom_input"
+            videos_path_source = None
+        else:
+            videos_path, videos_path_source, sample_count = _prepare_standard(params)
+            prompt_list = []
+            vbench_mode = "vbench_standard"
+
+        result_path = _invoke_vbench(
+            VBench=VBench,
+            temp_dir=temp_dir,
+            videos_path=videos_path,
+            prompt_list=prompt_list,
+            dimensions=dimensions,
+            params=params,
+            vbench_mode=vbench_mode,
+            use_windows_wget_patch=use_windows_wget_patch,
+        )
+
+        total, dim_scores = _parse_vbench_results(result_path, dimensions)
+
+        result: dict[str, Any] = {
+            "score": total,
+            "dims": dim_scores,
+            "sample_count": sample_count,
+            "raw_result_path": str(result_path),
+            "backend": "vbench_official",
+            "mode": mode,
+        }
+        if mode == "standard" and videos_path_source is not None:
+            result["resolved_videos_path"] = str(videos_path)
+            result["videos_path_source"] = videos_path_source
+
+        if keep_workdir:
+            result["work_dir"] = str(temp_dir)
+        return result
+    finally:
+        if not keep_workdir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _validate_dimensions(params: dict[str, Any], mode: str) -> list[str]:
+    """Validate and return the requested VBench dimension list."""
     dimensions = params.get(
         "dimensions",
         ["subject_consistency", "motion_smoothness", "dynamic_degree"],
@@ -301,124 +473,4 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
                 "vbench_official custom_input only supports specific dimensions. "
                 f"unsupported={unsupported}, allowed=[{allowed}]"
             )
-
-    try:
-        from vbench import VBench
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "vbench is not installed. Install official dependency with `pip install vbench`."
-        ) from exc
-
-    env_videos_path = str(os.getenv("RUN_VBENCH_VIDEOS_PATH", "")).strip()
-    if not params.get("videos_path") and env_videos_path:
-        params["videos_path"] = env_videos_path
-
-    output_root = Path(str(params.get("output_dir", "artifacts/vbench_official"))).resolve()
-    output_root.mkdir(parents=True, exist_ok=True)
-    allow_wget_shim = _as_bool(params.get("allow_wget_shim", True), default=True)
-    use_windows_wget_patch = _ensure_wget_command(allow_wget_shim=allow_wget_shim)
-
-    temp_dir = Path(tempfile.mkdtemp(prefix="temporalci_vbench_", dir=str(output_root)))
-    videos_dir = temp_dir / "videos"
-    keep_workdir = bool(params.get("keep_workdir", False))
-
-    try:
-        if mode == "custom_input":
-            copied_videos, prompt_map = _materialize_video_inputs(samples=samples, target_dir=videos_dir)
-            if not copied_videos:
-                raise ValueError(
-                    "vbench_official received no video files. "
-                    f"Supported suffixes: {sorted(SUPPORTED_VIDEO_SUFFIXES)}"
-                )
-            videos_path = videos_dir
-            prompt_list: Any = prompt_map
-            sample_count = len(copied_videos)
-            vbench_mode = "custom_input"
-        else:
-            videos_path, videos_path_source = _resolve_standard_videos_path(params=params)
-            prompt_list = []
-            sample_count = _count_video_files(videos_path)
-            vbench_mode = "vbench_standard"
-
-        full_info_json = str(params.get("full_info_json", "")).strip() or _resolve_full_info_json()
-        device = str(params.get("device", "cuda")).strip() or "cuda"
-        run_name = str(params.get("run_name", "temporalci")).strip() or "temporalci"
-        local = _as_bool(params.get("load_ckpt_from_local", False), default=False)
-        read_frame = _as_bool(params.get("read_frame", False), default=False)
-        allow_unsafe_torch_load = _as_bool(
-            params.get("allow_unsafe_torch_load", False),
-            default=False,
-        )
-
-        def _noop_restore() -> None:
-            return None
-
-        restore_wget_patch = _noop_restore
-        if use_windows_wget_patch:
-            restore_wget_patch = _patch_vbench_wget_runner()
-
-        torch_env_key = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
-        torch_env_was_set = torch_env_key in os.environ
-        if allow_unsafe_torch_load and not torch_env_was_set:
-            os.environ[torch_env_key] = "1"
-
-        evaluator = VBench(device, full_info_json, str(temp_dir))
-        try:
-            try:
-                evaluator.evaluate(
-                    videos_path=str(videos_path),
-                    name=run_name,
-                    prompt_list=prompt_list,
-                    dimension_list=[str(dim) for dim in dimensions],
-                    local=local,
-                    read_frame=read_frame,
-                    mode=vbench_mode,
-                )
-            except Exception as exc:  # noqa: BLE001
-                message = str(exc)
-                if not allow_unsafe_torch_load and "Weights only load failed" in message:
-                    raise RuntimeError(
-                        "vbench_official failed to load official checkpoint in safe mode. "
-                        "For trusted checkpoints only, rerun with "
-                        "`params.allow_unsafe_torch_load=true`."
-                    ) from exc
-                raise
-        finally:
-            if allow_unsafe_torch_load and not torch_env_was_set:
-                os.environ.pop(torch_env_key, None)
-            restore_wget_patch()
-
-        result_path = temp_dir / f"{run_name}_eval_results.json"
-        if not result_path.exists():
-            raise FileNotFoundError(f"vbench result file not found: {result_path}")
-
-        raw_payload = json.loads(result_path.read_text(encoding="utf-8"))
-        if not isinstance(raw_payload, dict):
-            raise ValueError("vbench result file must be a JSON object")
-
-        dim_scores: dict[str, float] = {}
-        for dim in dimensions:
-            key = str(dim)
-            score = _extract_dimension_score(raw_payload.get(key))
-            if score is not None:
-                dim_scores[key] = round(score, 6)
-
-        total = mean(dim_scores.values()) if dim_scores else 0.0
-        result: dict[str, Any] = {
-            "score": round(total, 6),
-            "dims": dim_scores,
-            "sample_count": sample_count,
-            "raw_result_path": str(result_path),
-            "backend": "vbench_official",
-            "mode": mode,
-        }
-        if mode == "standard":
-            result["resolved_videos_path"] = str(videos_path)
-            result["videos_path_source"] = videos_path_source
-
-        if keep_workdir:
-            result["work_dir"] = str(temp_dir)
-        return result
-    finally:
-        if not keep_workdir:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+    return dimensions

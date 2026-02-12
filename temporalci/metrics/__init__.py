@@ -4,10 +4,11 @@ from importlib import import_module
 from typing import Any
 from typing import Callable
 from typing import TypeAlias
+from typing import cast
 
 from temporalci.types import GeneratedSample
 
-MetricFn: TypeAlias = Callable[[list[GeneratedSample], dict[str, Any] | None], dict[str, Any]]
+MetricFn: TypeAlias = Callable[..., dict[str, Any]]
 MetricTarget: TypeAlias = str | MetricFn
 
 _REGISTRY: dict[str, MetricTarget] = {
@@ -41,7 +42,7 @@ def _resolve_metric(target: MetricTarget) -> MetricFn:
 
     if not callable(resolved):
         raise TypeError(f"metric target '{target}' is not callable")
-    return resolved
+    return cast(MetricFn, resolved)
 
 
 def run_metric(

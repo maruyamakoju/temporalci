@@ -1,35 +1,35 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import Any
 
 from temporalci.adapters import build_adapter
-from temporalci.constants import BASELINE_MODES
-from temporalci.constants import DIRECTION_HIGHER_IS_BETTER
-from temporalci.constants import DIRECTION_LOWER_IS_BETTER
-from temporalci.constants import GATE_OPERATORS
 from temporalci.config import select_model
+from temporalci.constants import BASELINE_MODES, DIRECTION_HIGHER_IS_BETTER, DIRECTION_LOWER_IS_BETTER, GATE_OPERATORS
 from temporalci.metrics import run_metric
 from temporalci.report import write_html_report
-from temporalci.types import GateSpec
-from temporalci.types import GeneratedSample
-from temporalci.types import SuiteSpec
+from temporalci.types import GateSpec, GeneratedSample, SuiteSpec
+from temporalci.utils import is_number, utc_now
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+_RUN_DIR_RETRY_LIMIT = 20
+
+# ---------------------------------------------------------------------------
+# Run directory helpers
+# ---------------------------------------------------------------------------
 
 
 def _new_run_id() -> str:
-    return _utc_now().strftime("%Y%m%dT%H%M%S%fZ")
+    return utc_now().strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def _create_run_dir(model_root: Path) -> tuple[str, Path]:
-    # Timestamp collisions are unlikely but possible on fast successive runs.
-    for _ in range(20):
+    """Allocate a unique timestamp-based run directory under *model_root*."""
+    for _ in range(_RUN_DIR_RETRY_LIMIT):
         run_id = _new_run_id()
         run_dir = model_root / run_id
         try:
@@ -40,7 +40,13 @@ def _create_run_dir(model_root: Path) -> tuple[str, Path]:
     raise RuntimeError("failed to allocate unique run directory after retries")
 
 
-def _resolve_path(payload: dict[str, Any], dotted_path: str) -> Any:
+# ---------------------------------------------------------------------------
+# Gate evaluation
+# ---------------------------------------------------------------------------
+
+
+def _resolve_metric_path(payload: dict[str, Any], dotted_path: str) -> Any:
+    """Walk *payload* along a dotted key path (e.g. ``'vbench.score'``)."""
     current: Any = payload
     for part in dotted_path.split("."):
         if not isinstance(current, dict) or part not in current:
@@ -49,15 +55,11 @@ def _resolve_path(payload: dict[str, Any], dotted_path: str) -> Any:
     return current
 
 
-def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
 def _compare(actual: Any, op: str, expected: Any) -> bool:
     if op == "==":
-        return actual == expected
+        return bool(actual == expected)
     if op == "!=":
-        return actual != expected
+        return bool(actual != expected)
     if op == ">=":
         return float(actual) >= float(expected)
     if op == "<=":
@@ -85,7 +87,7 @@ def _evaluate_gates(gates: list[GateSpec], metrics_payload: dict[str, Any]) -> l
             continue
 
         try:
-            actual = _resolve_path(metrics_payload, gate.metric)
+            actual = _resolve_metric_path(metrics_payload, gate.metric)
             result["actual"] = actual
             result["passed"] = _compare(actual, gate.op, gate.value)
         except Exception as exc:  # noqa: BLE001
@@ -93,6 +95,11 @@ def _evaluate_gates(gates: list[GateSpec], metrics_payload: dict[str, Any]) -> l
             result["passed"] = False
         results.append(result)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Baseline loading & regression detection
+# ---------------------------------------------------------------------------
 
 
 def _load_previous_run(
@@ -105,18 +112,16 @@ def _load_previous_run(
         return None
     if not model_root.exists():
         return None
+
     candidates: list[tuple[str, dict[str, Any]]] = []
     for child in model_root.iterdir():
-        if not child.is_dir():
-            continue
-        if child.name == current_run_id:
+        if not child.is_dir() or child.name == current_run_id:
             continue
         run_json = child / "run.json"
         if run_json.exists():
             payload = json.loads(run_json.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                continue
-            candidates.append((child.name, payload))
+            if isinstance(payload, dict):
+                candidates.append((child.name, payload))
     if not candidates:
         return None
 
@@ -150,11 +155,11 @@ def _compute_regressions(
         if op not in DIRECTION_HIGHER_IS_BETTER and op not in DIRECTION_LOWER_IS_BETTER:
             continue
         try:
-            current_value = _resolve_path(current_metrics, metric)
-            baseline_value = _resolve_path(baseline_metrics, metric)
+            current_value = _resolve_metric_path(current_metrics, metric)
+            baseline_value = _resolve_metric_path(baseline_metrics, metric)
         except KeyError:
             continue
-        if not _is_number(current_value) or not _is_number(baseline_value):
+        if not is_number(current_value) or not is_number(baseline_value):
             continue
 
         if op in DIRECTION_HIGHER_IS_BETTER:
@@ -177,13 +182,16 @@ def _compute_regressions(
     return regressions
 
 
+# ---------------------------------------------------------------------------
+# Artifact retention
+# ---------------------------------------------------------------------------
+
+
 def _safe_unlink(path: Path) -> bool:
     try:
         path.unlink()
         return True
-    except FileNotFoundError:
-        return False
-    except OSError:
+    except (FileNotFoundError, OSError):
         return False
 
 
@@ -230,27 +238,18 @@ def _build_sample_rows_with_retention(
     return rows
 
 
-def run_suite(
+# ---------------------------------------------------------------------------
+# Sample generation
+# ---------------------------------------------------------------------------
+
+
+def _generate_samples(
     *,
     suite: SuiteSpec,
-    model_name: str | None = None,
-    artifacts_dir: str | Path = "artifacts",
-    fail_on_regression: bool = True,
-    baseline_mode: str = "latest_pass",
-) -> dict[str, Any]:
-    if baseline_mode not in BASELINE_MODES:
-        available = ", ".join(sorted(BASELINE_MODES))
-        raise ValueError(f"invalid baseline_mode '{baseline_mode}'. choose: {available}")
-
-    model = select_model(suite, model_name)
-    adapter = build_adapter(model)
-
-    timestamp = _utc_now().isoformat()
-    model_root = Path(artifacts_dir) / suite.project / suite.suite_name / model.name
-    run_id, run_dir = _create_run_dir(model_root=model_root)
-    videos_dir = run_dir / "videos"
-    videos_dir.mkdir(parents=True, exist_ok=True)
-
+    adapter: Any,
+    videos_dir: Path,
+) -> list[GeneratedSample]:
+    """Run the adapter for every (test, prompt, seed) combination."""
     samples: list[GeneratedSample] = []
     for test in suite.tests:
         for prompt in test.prompts:
@@ -266,7 +265,73 @@ def run_suite(
                     output_dir=videos_dir,
                 )
                 samples.append(sample)
+    return samples
 
+
+# ---------------------------------------------------------------------------
+# Run artifact writing
+# ---------------------------------------------------------------------------
+
+
+def _write_run_artifacts(
+    *,
+    run_dir: Path,
+    model_root: Path,
+    run_id: str,
+    timestamp: str,
+    status: str,
+    samples: list[GeneratedSample],
+    payload: dict[str, Any],
+) -> None:
+    """Persist run.json, report.html, latest_run.txt, and runs.jsonl."""
+    run_json = run_dir / "run.json"
+    run_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_html_report(run_dir / "report.html", payload)
+
+    latest_file = model_root / "latest_run.txt"
+    latest_file.write_text(run_id, encoding="utf-8")
+
+    index_entry = {
+        "run_id": run_id,
+        "timestamp_utc": timestamp,
+        "status": status,
+        "sample_count": len(samples),
+    }
+    with (model_root / "runs.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(index_entry) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def run_suite(
+    *,
+    suite: SuiteSpec,
+    model_name: str | None = None,
+    artifacts_dir: str | Path = "artifacts",
+    fail_on_regression: bool = True,
+    baseline_mode: str = "latest_pass",
+) -> dict[str, Any]:
+    """Execute a full suite run and return the result payload."""
+    if baseline_mode not in BASELINE_MODES:
+        available = ", ".join(sorted(BASELINE_MODES))
+        raise ValueError(f"invalid baseline_mode '{baseline_mode}'. choose: {available}")
+
+    model = select_model(suite, model_name)
+    adapter = build_adapter(model)
+
+    timestamp = utc_now().isoformat()
+    model_root = Path(artifacts_dir) / suite.project / suite.suite_name / model.name
+    run_id, run_dir = _create_run_dir(model_root=model_root)
+    videos_dir = run_dir / "videos"
+    videos_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Generate samples
+    samples = _generate_samples(suite=suite, adapter=adapter, videos_dir=videos_dir)
+
+    # 2. Evaluate metrics
     metrics_payload: dict[str, Any] = {}
     for metric in suite.metrics:
         metric_params = dict(metric.params)
@@ -278,13 +343,13 @@ def run_suite(
             params=metric_params,
         )
 
+    # 3. Evaluate gates
     gates = _evaluate_gates(suite.gates, metrics_payload)
     gate_failed = any(not gate.get("passed", False) for gate in gates)
 
+    # 4. Regression comparison
     baseline = _load_previous_run(
-        model_root=model_root,
-        current_run_id=run_id,
-        baseline_mode=baseline_mode,
+        model_root=model_root, current_run_id=run_id, baseline_mode=baseline_mode
     )
     baseline_metrics = baseline.get("metrics") if isinstance(baseline, dict) else None
     baseline_run_id = baseline.get("run_id") if isinstance(baseline, dict) else None
@@ -294,15 +359,16 @@ def run_suite(
     )
     regression_failed = any(item["regressed"] for item in regressions)
 
+    # 5. Determine final status
     should_fail = gate_failed or (fail_on_regression and regression_failed)
     status = "FAIL" if should_fail else "PASS"
 
+    # 6. Apply retention policy
     sample_rows = _build_sample_rows_with_retention(
-        samples=samples,
-        status=status,
-        artifacts_cfg=suite.artifacts,
+        samples=samples, status=status, artifacts_cfg=suite.artifacts
     )
 
+    # 7. Build result payload
     payload: dict[str, Any] = {
         "run_id": run_id,
         "timestamp_utc": timestamp,
@@ -322,21 +388,16 @@ def run_suite(
         "samples": sample_rows,
     }
 
-    run_json = run_dir / "run.json"
-    run_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    write_html_report(run_dir / "report.html", payload)
-
-    latest_file = model_root / "latest_run.txt"
-    latest_file.write_text(run_id, encoding="utf-8")
-
-    index_entry = {
-        "run_id": run_id,
-        "timestamp_utc": timestamp,
-        "status": status,
-        "sample_count": len(samples),
-    }
-    with (model_root / "runs.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(index_entry) + "\n")
+    # 8. Write artifacts
+    _write_run_artifacts(
+        run_dir=run_dir,
+        model_root=model_root,
+        run_id=run_id,
+        timestamp=timestamp,
+        status=status,
+        samples=samples,
+        payload=payload,
+    )
 
     payload["run_dir"] = str(run_dir)
     return payload

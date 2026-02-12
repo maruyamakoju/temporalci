@@ -9,7 +9,9 @@ from typing import Any
 import numpy as np
 
 from temporalci.adapters.base import ModelAdapter
+from temporalci.errors import AdapterError
 from temporalci.types import GeneratedSample
+from temporalci.utils import as_bool
 
 
 class DiffusersImg2VidAdapter(ModelAdapter):
@@ -31,8 +33,10 @@ class DiffusersImg2VidAdapter(ModelAdapter):
         self.device = str(self.params.get("device", "cuda")).strip() or "cuda"
         self.torch_dtype = str(self.params.get("torch_dtype", "float16")).strip()
         self.variant = str(self.params.get("variant", "fp16")).strip()
-        self.use_safetensors = bool(self.params.get("use_safetensors", True))
-        self.disable_progress_bar = bool(self.params.get("disable_progress_bar", True))
+        self.use_safetensors = as_bool(self.params.get("use_safetensors", True), default=True)
+        self.disable_progress_bar = as_bool(
+            self.params.get("disable_progress_bar", True), default=True
+        )
         self.default_fps = int(self.params.get("fps", 6))
         self.default_num_frames = int(self.params.get("num_frames", 25))
         self.default_num_inference_steps = int(self.params.get("num_inference_steps", 25))
@@ -167,7 +171,7 @@ class DiffusersImg2VidAdapter(ModelAdapter):
         try:
             from diffusers import StableVideoDiffusionPipeline
         except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(
+            raise AdapterError(
                 "diffusers is not installed. Install optional deps for diffusers adapter."
             ) from exc
 
@@ -259,15 +263,15 @@ class DiffusersImg2VidAdapter(ModelAdapter):
         try:
             import torch
         except Exception as exc:  # noqa: BLE001
-            raise RuntimeError("torch is not installed") from exc
+            raise AdapterError("torch is not installed") from exc
         try:
             from PIL import Image
         except Exception as exc:  # noqa: BLE001
-            raise RuntimeError("Pillow is not installed") from exc
+            raise AdapterError("Pillow is not installed") from exc
         try:
             from diffusers.utils import export_to_video
         except Exception as exc:  # noqa: BLE001
-            raise RuntimeError("diffusers export_to_video is unavailable") from exc
+            raise AdapterError("diffusers export_to_video is unavailable") from exc
         return torch, Image, export_to_video
 
     def _frame_luma_stream(self, frames: list[Any]) -> list[float]:

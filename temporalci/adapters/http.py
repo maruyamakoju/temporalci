@@ -5,33 +5,25 @@ import json
 import random
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from temporalci.adapters.base import ModelAdapter
 from temporalci.types import GeneratedSample
 
 
 class HttpAdapter(ModelAdapter):
-    """
-    Minimal remote inference adapter.
+    """Minimal remote inference adapter.
 
-    Expected endpoint request body:
-      {
-        "model": "...",
-        "prompt": "...",
-        "seed": 0,
-        "video_cfg": {...},
-        "params": {...}
-      }
+    Expected endpoint request body::
 
-    Expected response body (JSON):
-      {
-        "video_path": "/path/to/video.mp4",        # optional
-        "evaluation_stream": [0.1, 0.2, ...],      # optional
-        "metadata": {...}                           # optional
-      }
+        {"model": "...", "prompt": "...", "seed": 0, "video_cfg": {...}, "params": {...}}
+
+    Expected response body (JSON)::
+
+        {"video_path": "/path/to/video.mp4", "evaluation_stream": [...], "metadata": {...}}
     """
 
-    def __init__(self, model_name: str, params: dict[str, object] | None = None) -> None:
+    def __init__(self, model_name: str, params: dict[str, Any] | None = None) -> None:
         super().__init__(model_name, params)
         endpoint = str(self.params.get("endpoint", "")).strip()
         if not endpoint:
@@ -45,7 +37,7 @@ class HttpAdapter(ModelAdapter):
         test_id: str,
         prompt: str,
         seed: int,
-        video_cfg: dict[str, object],
+        video_cfg: dict[str, Any],
         output_dir: Path,
     ) -> GeneratedSample:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,7 +94,7 @@ class HttpAdapter(ModelAdapter):
         *,
         prompt: str,
         seed: int,
-        video_cfg: dict[str, object],
+        video_cfg: dict[str, Any],
     ) -> list[float]:
         num_frames = int(video_cfg.get("num_frames", 25))
         fingerprint = hashlib.sha256(

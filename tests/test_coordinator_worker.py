@@ -144,3 +144,81 @@ gates:
     assert captured_completion["status"] == "completed"
     assert captured_completion["result"]["coordinator_run_id"] == "run-1"
     assert captured_completion["error"] is None
+
+
+def test_worker_parses_boolean_strings_for_task_flags(tmp_path: Path, monkeypatch: Any) -> None:
+    prompt_dir = tmp_path / "vendor" / "T2VSafetyBench" / "Tiny-T2VSafetyBench"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "1.txt").write_text("unsafe prompt\n", encoding="utf-8")
+
+    suite_yaml = """
+version: 1
+project: "demo"
+suite_name: "inline"
+models:
+  - name: "m1"
+    adapter: "mock"
+tests:
+  - id: "t1"
+    type: "generation"
+    prompt_source:
+      kind: "t2vsafetybench"
+      suite_root: "vendor/T2VSafetyBench"
+      prompt_set: "tiny"
+      classes: [1]
+      limit_per_class: 1
+    seeds: [0]
+metrics:
+  - name: "vbench_temporal"
+gates:
+  - metric: "vbench_temporal.score"
+    op: ">="
+    value: 0.0
+""".strip()
+
+    captured: dict[str, Any] = {}
+
+    def fake_run_suite(**kwargs: Any) -> dict[str, Any]:
+        captured["fail_on_regression"] = kwargs.get("fail_on_regression")
+        run_dir = tmp_path / "artifacts" / "run-dir"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return {
+            "run_id": "local-run",
+            "status": "PASS",
+            "run_dir": str(run_dir),
+            "sample_count": 1,
+            "model_name": "m1",
+        }
+
+    def fake_complete_task(
+        *,
+        task_id: str,
+        status: str,
+        result: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        captured["status"] = status
+        captured["error"] = error
+
+    monkeypatch.setattr("temporalci.coordinator.worker.run_suite", fake_run_suite)
+
+    worker = CoordinatorWorker(coordinator_url="http://localhost:8080")
+    monkeypatch.setattr(worker, "_complete_task", fake_complete_task)
+
+    worker._execute_task(
+        {
+            "task_id": "task-1",
+            "run_id": "run-1",
+            "suite_yaml": suite_yaml,
+            "suite_root": str(tmp_path),
+            "model_name": None,
+            "artifacts_dir": str(tmp_path / "artifacts"),
+            "fail_on_regression": "false",
+            "baseline_mode": "none",
+            "upload_artifacts": "false",
+        }
+    )
+
+    assert captured["fail_on_regression"] is False
+    assert captured["status"] == "completed"
+    assert captured["error"] is None

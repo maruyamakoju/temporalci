@@ -7,8 +7,8 @@ from pathlib import Path
 from scripts.autopilot_96h import _safe_release_runtime_memory
 from scripts.autopilot_96h import _safe_remove_pid_file
 from scripts.autopilot_96h import _prune_model_runs
-from scripts.autopilot_96h import _write_json
 from scripts.autopilot_96h import _write_terminal_status
+from temporalci.utils import atomic_write_json
 from scripts.stop_autopilot_background import _mark_status_stopped
 from scripts.stop_autopilot_background import main as stop_main
 
@@ -37,8 +37,8 @@ def test_prune_model_runs_keeps_latest(tmp_path: Path) -> None:
 
 def test_write_json_replaces_atomically(tmp_path: Path) -> None:
     path = tmp_path / "status.json"
-    _write_json(path, {"state": "one"})
-    _write_json(path, {"state": "two"})
+    atomic_write_json(path, {"state": "one"})
+    atomic_write_json(path, {"state": "two"})
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["state"] == "two"

@@ -1,45 +1,27 @@
+"""Utilities for autopilot long-run automation.
+
+JSON I/O and time helpers are re-exported from :mod:`temporalci.utils` for
+backward compatibility.  Process management helpers remain here.
+"""
+
 from __future__ import annotations
 
-import json
 import os
 import signal
 import subprocess
-from datetime import datetime
-from datetime import timezone
 from pathlib import Path
-from typing import Any
 
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def read_json_dict(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    temp.replace(path)
-
-
-def safe_write_json(path: Path, payload: dict[str, Any]) -> bool:
-    try:
-        atomic_write_json(path, payload)
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+# Re-export shared helpers so existing callers continue to work.
+from temporalci.utils import (  # noqa: F401
+    atomic_write_json,
+    read_json_dict,
+    safe_write_json,
+    utc_now_iso,
+)
 
 
 def pid_exists(pid: int) -> bool:
+    """Return ``True`` if a process with *pid* appears to be alive."""
     if pid <= 0:
         return False
     if os.name == "nt":
@@ -55,7 +37,7 @@ def pid_exists(pid: int) -> bool:
             if handle:
                 ctypes.windll.kernel32.CloseHandle(handle)
                 return True
-            return ctypes.windll.kernel32.GetLastError() == 5
+            return bool(ctypes.windll.kernel32.GetLastError() == 5)
         except Exception:  # noqa: BLE001
             pass
     try:
@@ -84,6 +66,7 @@ def _taskkill(pid: int) -> bool:
 
 
 def terminate_pid(pid: int, *, timeout_sec: float = 10.0) -> bool:
+    """Attempt to terminate a process tree rooted at *pid*."""
     if pid <= 0:
         return False
     try:

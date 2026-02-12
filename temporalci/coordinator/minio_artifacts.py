@@ -4,13 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from temporalci.coordinator.config import CoordinatorSettings
+from temporalci.errors import CoordinatorError
 
 
 def _load_boto3() -> Any:
     try:
         import boto3
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
+        raise CoordinatorError(
             "boto3 is required for MinIO artifact uploads. "
             "Install optional dependencies for distributed mode."
         ) from exc

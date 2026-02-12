@@ -4,3 +4,7 @@ __pycache__/
 artifacts/
 *.pyc
 temporalci.egg-info/
+.coverage
+.mypy_cache/
+.ruff_cache/
+.claude/

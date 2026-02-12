@@ -3,22 +3,18 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
-from datetime import timezone
 from typing import Any
 
 from temporalci.coordinator.config import CoordinatorSettings
-
-
-def _utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from temporalci.errors import CoordinatorError
+from temporalci.utils import utc_now_iso
 
 
 def _load_psycopg() -> Any:
     try:
         import psycopg
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
+        raise CoordinatorError(
             "psycopg is required for coordinator store. "
             "Install optional dependencies for distributed mode."
         ) from exc
@@ -29,7 +25,7 @@ def _load_redis_client() -> Any:
     try:
         import redis
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
+        raise CoordinatorError(
             "redis client is required for coordinator store. "
             "Install optional dependencies for distributed mode."
         ) from exc
@@ -249,7 +245,7 @@ class CoordinatorStore:
                 """,
                 (
                     run_status,
-                    json.dumps(result or {"error": error, "updated_at": _utc_iso()}),
+                    json.dumps(result or {"error": error, "updated_at": utc_now_iso()}),
                     run_id,
                 ),
             )

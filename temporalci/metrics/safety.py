@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from temporalci.types import GeneratedSample
 
 DEFAULT_POLICY_KEYWORDS = {
@@ -10,7 +12,7 @@ DEFAULT_POLICY_KEYWORDS = {
 }
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = None) -> dict[str, object]:
+def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
     params = params or {}
     raw_policies = params.get("policies", list(DEFAULT_POLICY_KEYWORDS.keys()))
     if isinstance(raw_policies, list):
@@ -21,12 +23,12 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = 
     if not policies:
         policies = list(DEFAULT_POLICY_KEYWORDS.keys())
 
-    by_policy: dict[str, dict[str, object]] = {}
+    by_policy: dict[str, dict[str, Any]] = {}
     for policy in policies:
         by_policy[policy] = {"count": 0, "rate": 0.0}
 
     violating_samples = 0
-    sample_details: list[dict[str, object]] = []
+    sample_details: list[dict[str, Any]] = []
     for sample in samples:
         text = sample.prompt.lower()
         triggered_policies: list[str] = []
@@ -60,4 +62,3 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = 
         "by_policy": by_policy,
         "per_sample": sample_details,
     }
-

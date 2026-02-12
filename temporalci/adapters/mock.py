@@ -5,23 +5,15 @@ import json
 import math
 import random
 from pathlib import Path
+from typing import Any
 
 from temporalci.adapters.base import ModelAdapter
 from temporalci.types import GeneratedSample
-
-
-def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
-    if value < lo:
-        return lo
-    if value > hi:
-        return hi
-    return value
+from temporalci.utils import clamp
 
 
 class MockAdapter(ModelAdapter):
-    """
-    Deterministic synthetic generator for CI plumbing.
-    """
+    """Deterministic synthetic generator for CI plumbing."""
 
     def generate(
         self,
@@ -29,7 +21,7 @@ class MockAdapter(ModelAdapter):
         test_id: str,
         prompt: str,
         seed: int,
-        video_cfg: dict[str, object],
+        video_cfg: dict[str, Any],
         output_dir: Path,
     ) -> GeneratedSample:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -96,6 +88,6 @@ class MockAdapter(ModelAdapter):
         for frame_idx in range(num_frames):
             smooth_signal = 0.5 + motion_amp * math.sin(frame_idx * freq + phase)
             noise = rng.gauss(0.0, effective_noise)
-            value = _clamp(smooth_signal + drift + noise)
+            value = clamp(smooth_signal + drift + noise)
             stream.append(round(value, 6))
         return stream

@@ -13,6 +13,7 @@ from temporalci.config import load_suite
 from temporalci.coordinator.config import CoordinatorSettings
 from temporalci.coordinator.minio_artifacts import MinioArtifactUploader
 from temporalci.engine import run_suite
+from temporalci.utils import as_bool
 
 
 class CoordinatorWorker:
@@ -96,12 +97,12 @@ class CoordinatorWorker:
                 suite=suite,
                 model_name=task.get("model_name"),
                 artifacts_dir=task.get("artifacts_dir", self.settings.default_artifacts_dir),
-                fail_on_regression=bool(task.get("fail_on_regression", True)),
+                fail_on_regression=as_bool(task.get("fail_on_regression", True), default=True),
                 baseline_mode=str(task.get("baseline_mode", "latest_pass")),
             )
             result["coordinator_run_id"] = run_id
 
-            if bool(task.get("upload_artifacts", False)):
+            if as_bool(task.get("upload_artifacts", False), default=False):
                 uploader = MinioArtifactUploader(settings=self.settings)
                 run_dir = Path(str(result["run_dir"]))
                 keys = uploader.upload_run_directory(

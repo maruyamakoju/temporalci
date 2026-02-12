@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from temporalci.adapters import available_adapters
 from temporalci.constants import BASELINE_MODES
-from temporalci.config import SuiteValidationError
+from temporalci.config import SuiteValidationError  # ConfigError alias
 from temporalci.config import load_suite
 from temporalci.engine import run_suite
 from temporalci.metrics import available_metrics
@@ -49,7 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_summary(result: dict[str, object]) -> None:
+def _print_summary(result: dict[str, Any]) -> None:
     print(f"status={result['status']} run_id={result['run_id']}")
     print(f"run_dir={result['run_dir']}")
     print(f"model={result['model_name']} samples={result['sample_count']}")

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+from typing import Any
 
 
-def _render_metrics(metrics: dict[str, object]) -> str:
+def _render_metrics(metrics: dict[str, Any]) -> str:
     rows: list[str] = []
     for metric_name, payload in metrics.items():
         payload_dict = payload if isinstance(payload, dict) else {"value": payload}
@@ -21,7 +22,7 @@ def _render_metrics(metrics: dict[str, object]) -> str:
     return "\n".join(rows)
 
 
-def _render_gates(gates: list[dict[str, object]]) -> str:
+def _render_gates(gates: list[dict[str, Any]]) -> str:
     rows: list[str] = []
     for gate in gates:
         status = "PASS" if gate.get("passed") else "FAIL"
@@ -38,7 +39,7 @@ def _render_gates(gates: list[dict[str, object]]) -> str:
     return "\n".join(rows)
 
 
-def _render_regressions(regressions: list[dict[str, object]]) -> str:
+def _render_regressions(regressions: list[dict[str, Any]]) -> str:
     if not regressions:
         return "<tr><td colspan='6'>No baseline or no directional gates.</td></tr>"
     rows: list[str] = []
@@ -57,7 +58,7 @@ def _render_regressions(regressions: list[dict[str, object]]) -> str:
     return "\n".join(rows)
 
 
-def _render_samples(samples: list[dict[str, object]], limit: int = 200) -> str:
+def _render_samples(samples: list[dict[str, Any]], limit: int = 200) -> str:
     rows: list[str] = []
     for sample in samples[:limit]:
         rows.append(
@@ -73,7 +74,7 @@ def _render_samples(samples: list[dict[str, object]], limit: int = 200) -> str:
     return "\n".join(rows)
 
 
-def write_html_report(path: Path, payload: dict[str, object]) -> None:
+def write_html_report(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     status = payload.get("status", "UNKNOWN")
     status_color = "#14804a" if status == "PASS" else "#a52222"

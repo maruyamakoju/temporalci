@@ -4,8 +4,8 @@ from typing import Any
 
 from temporalci.constants import BASELINE_MODES
 from temporalci.coordinator.config import CoordinatorSettings
-from temporalci.coordinator.store import CoordinatorStore
-from temporalci.coordinator.store import CreateRunRequest
+from temporalci.coordinator.store import CoordinatorStore, CreateRunRequest
+from temporalci.errors import CoordinatorError
 
 
 def create_app() -> Any:
@@ -14,7 +14,7 @@ def create_app() -> Any:
         from fastapi import HTTPException
         from pydantic import BaseModel
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
+        raise CoordinatorError(
             "fastapi and pydantic are required for coordinator app. "
             "Install optional dependencies for distributed mode."
         ) from exc

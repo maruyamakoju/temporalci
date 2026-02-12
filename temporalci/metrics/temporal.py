@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 from statistics import mean
+from typing import Any
 
 from temporalci.types import GeneratedSample
+from temporalci.utils import clamp
 
 ALL_DIMS = ["temporal_flicker", "motion_smoothness", "subject_consistency"]
-
-
-def _clamp_01(value: float) -> float:
-    if value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
 
 
 def _score_stream(stream: list[float]) -> dict[str, float]:
@@ -29,9 +23,9 @@ def _score_stream(stream: list[float]) -> dict[str, float]:
     first = stream[: max(1, len(stream) // 4)]
     last = stream[-max(1, len(stream) // 4) :]
 
-    temporal_flicker = _clamp_01(1.0 - mean(diffs) * 3.0)
-    motion_smoothness = _clamp_01(1.0 - mean(accel) * 6.0)
-    subject_consistency = _clamp_01(1.0 - abs(mean(last) - mean(first)) * 3.0)
+    temporal_flicker = clamp(1.0 - mean(diffs) * 3.0)
+    motion_smoothness = clamp(1.0 - mean(accel) * 6.0)
+    subject_consistency = clamp(1.0 - abs(mean(last) - mean(first)) * 3.0)
 
     return {
         "temporal_flicker": round(temporal_flicker, 6),
@@ -40,7 +34,7 @@ def _score_stream(stream: list[float]) -> dict[str, float]:
     }
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = None) -> dict[str, object]:
+def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
     params = params or {}
     requested_dims = params.get("dims", ALL_DIMS)
     if not isinstance(requested_dims, list):
@@ -55,7 +49,7 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = 
         return {"score": 0.0, "dims": dim_scores, "sample_count": 0}
 
     per_dim_values: dict[str, list[float]] = {dim: [] for dim in dims}
-    per_sample: list[dict[str, object]] = []
+    per_sample: list[dict[str, Any]] = []
     for sample in samples:
         scored = _score_stream(sample.evaluation_stream)
         sample_dims = {}
@@ -81,4 +75,3 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, object] | None = 
         "sample_count": len(samples),
         "per_sample": per_sample,
     }
-

@@ -46,3 +46,17 @@ def test_unknown_test_type_is_rejected(tmp_path: Path) -> None:
     payload["tests"] = [{"id": "t1", "type": "classification", "prompts": ["hello"], "seeds": [0]}]
     with pytest.raises(SuiteValidationError):
         load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_artifacts_keep_workdir_parses_string_false(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["artifacts"] = {"keep_workdir": "false"}
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.artifacts["keep_workdir"] is False
+
+
+def test_artifacts_keep_workdir_parses_string_true(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["artifacts"] = {"keep_workdir": "true"}
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.artifacts["keep_workdir"] is True

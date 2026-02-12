@@ -33,6 +33,13 @@ distributed = [
   "redis>=5.0",
   "boto3>=1.35",
 ]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "mypy>=1.10",
+  "ruff>=0.6.0",
+  "types-PyYAML>=6.0.12.20241230",
+]
 
 [tool.setuptools]
 packages = [
@@ -42,8 +49,30 @@ packages = [
   "temporalci.coordinator",
 ]
 
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
   "integration: requires heavy/optional dependencies and external assets",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  "vendor",
+  "artifacts",
+  ".claude",
 ]
