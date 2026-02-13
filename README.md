@@ -217,6 +217,29 @@ python scripts/smoke_distributed_e2e.py \
   --baseline-mode none
 ```
 
+Failure-injection recovery E2E (worker kill -> requeue -> recovery):
+
+```bash
+python scripts/distributed_recovery_e2e.py \
+  --artifacts-dir artifacts/distributed-recovery-e2e \
+  --coordinator-port 18080 \
+  --task-sleep-sec 20
+```
+
+This script can optionally bring up Postgres/Redis via `infra/docker-compose.yml`
+unless `--skip-compose` is set. It writes verification output to:
+
+- `artifacts/distributed-recovery-e2e/distributed_recovery_summary.json`
+- `artifacts/distributed-recovery-e2e/logs/*.log`
+
+Optional integration test (disabled by default):
+
+```bash
+set RUN_DISTRIBUTED_E2E=1&&python -m pytest -q tests\test_distributed_recovery_e2e.py -vv
+```
+
+Operational procedure details are documented in `docs/distributed_recovery_runbook.md`.
+
 ## CI Workflow for GPU Demo
 
 Manual workflow:
