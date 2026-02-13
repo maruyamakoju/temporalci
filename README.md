@@ -240,13 +240,21 @@ set RUN_DISTRIBUTED_E2E=1&&python -m pytest -q tests\test_distributed_recovery_e
 
 Operational procedure details are documented in `docs/distributed_recovery_runbook.md`.
 
-## CI Workflow for GPU Demo
+## CI Workflows
 
-Manual workflow:
+GPU demo manual workflow:
 
 - `.github/workflows/svd-regression-gate-demo.yml`
 
-It runs baseline then candidate on a self-hosted GPU runner and checks expected gate behavior.
+Distributed recovery workflows:
+
+- `.github/workflows/distributed-recovery-e2e.yml` (manual + nightly schedule)
+
+The GPU workflow runs baseline then candidate on a self-hosted GPU runner and checks expected gate behavior.
+
+Latest local distributed recovery proof snapshot:
+
+- `docs/proofs/distributed_recovery_e2e_20260213.md`
 
 ## 96h Autopilot
 
