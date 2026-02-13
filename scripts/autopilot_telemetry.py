@@ -6,6 +6,8 @@ import json
 import shutil
 import subprocess
 import time
+from datetime import datetime
+from datetime import timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,40 @@ def _hash_last_runs_line(path: Path) -> str | None:
     if line is None:
         return None
     return hashlib.sha256(line.encode("utf-8")).hexdigest()[:16]
+
+
+def _parse_iso(raw: Any) -> datetime | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        value = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _compute_cycle_time_sec_from_runs_tail(path: Path) -> float | None:
+    line = _tail_line(path)
+    if line is None:
+        return None
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("event", "")) != "cycle_end":
+        return None
+    started = _parse_iso(payload.get("started_at_utc"))
+    finished = _parse_iso(payload.get("finished_at_utc"))
+    if started is None or finished is None:
+        return None
+    delta = (finished - started).total_seconds()
+    if delta < 0:
+        return None
+    return round(float(delta), 3)
 
 
 def _parse_numeric_token(raw: str) -> float | None:
@@ -202,6 +238,7 @@ def _collect_sample(
         "gpu_mem_mb": gpu_mem_mb,
         "gpu_util": gpu_util,
         "last_runs_tail_hash": _hash_last_runs_line(runs_path),
+        "cycle_time_sec": _compute_cycle_time_sec_from_runs_tail(runs_path),
     }
     if rss_error:
         sample["rss_error"] = rss_error

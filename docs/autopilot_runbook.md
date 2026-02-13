@@ -67,6 +67,7 @@ Each JSONL record includes:
 - `cycle`, `state`, `phase`
 - `rss_bytes` (from `psutil`, or `null` if unavailable)
 - `gpu_mem_mb`, `gpu_util` (from `nvidia-smi`, or `null` if unavailable)
+- `cycle_time_sec` (derived from latest `cycle_end` event when available)
 - `last_runs_tail_hash`
 
 When monitoring stops, the final record includes `telemetry_stop_reason`.

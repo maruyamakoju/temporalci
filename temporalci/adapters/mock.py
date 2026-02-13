@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ class MockAdapter(ModelAdapter):
         num_frames = int(video_cfg.get("num_frames", 25))
         quality_shift = float(self.params.get("quality_shift", 0.0))
         noise_scale = float(self.params.get("noise_scale", 0.06))
+        sleep_sec = float(self.params.get("sleep_sec", 0.0))
 
         stream = self._build_stream(
             prompt=prompt,
@@ -36,6 +38,9 @@ class MockAdapter(ModelAdapter):
             quality_shift=quality_shift,
             noise_scale=noise_scale,
         )
+
+        if sleep_sec > 0.0:
+            time.sleep(sleep_sec)
 
         sample_hash = hashlib.sha1(
             f"{test_id}|{prompt}|{seed}|{self.model_name}".encode("utf-8")

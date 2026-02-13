@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from scripts.autopilot_telemetry import _compute_stop_reason
+from scripts.autopilot_telemetry import _compute_cycle_time_sec_from_runs_tail
 from scripts.autopilot_telemetry import _hash_last_runs_line
 from scripts.autopilot_telemetry import _parse_gpu_apps_csv
 from scripts.autopilot_telemetry import _parse_gpu_util_csv
@@ -58,6 +59,19 @@ def test_compute_stop_reason_prefers_max_samples() -> None:
         stop_on_terminal_state=True,
     )
     assert reason == "max_samples_reached"
+
+
+def test_compute_cycle_time_sec_from_runs_tail(tmp_path: Path) -> None:
+    runs_path = tmp_path / "autopilot_runs.jsonl"
+    runs_path.write_text(
+        '{"event":"cycle_start","started_at_utc":"2026-02-10T00:00:00+00:00"}\n'
+        '{"event":"cycle_end","started_at_utc":"2026-02-10T00:00:00+00:00","finished_at_utc":"2026-02-10T00:00:03.250000+00:00"}\n',
+        encoding="utf-8",
+    )
+
+    value = _compute_cycle_time_sec_from_runs_tail(runs_path)
+
+    assert value == 3.25
 
 
 def test_telemetry_main_writes_stop_reason_with_max_samples(
