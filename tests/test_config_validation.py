@@ -60,3 +60,47 @@ def test_artifacts_keep_workdir_parses_string_true(tmp_path: Path) -> None:
     payload["artifacts"] = {"keep_workdir": "true"}
     suite = load_suite(_write_yaml(tmp_path, payload))
     assert suite.artifacts["keep_workdir"] is True
+
+
+def test_gate_method_sprt_regression_is_parsed(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.dims.motion_smoothness",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"effect_size": 0.05, "min_pairs": 6},
+        }
+    ]
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.gates[0].method == "sprt_regression"
+    assert suite.gates[0].params["effect_size"] == 0.05
+
+
+def test_gate_method_invalid_is_rejected(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "unknown_method",
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_non_directional_operator(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": "==",
+            "value": 0.1,
+            "method": "sprt_regression",
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))

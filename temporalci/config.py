@@ -5,6 +5,9 @@ from typing import Any
 
 import yaml
 
+from temporalci.constants import DIRECTION_HIGHER_IS_BETTER
+from temporalci.constants import DIRECTION_LOWER_IS_BETTER
+from temporalci.constants import GATE_METHODS
 from temporalci.constants import GATE_OPERATORS
 from temporalci.errors import ConfigError
 from temporalci.prompt_sources import expand_prompt_source
@@ -299,6 +302,7 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
         gate = _require_dict(raw_gate, f"gates[{i}]")
         metric_path = str(gate.get("metric", "")).strip()
         op = str(gate.get("op", "")).strip()
+        method = str(gate.get("method", "threshold")).strip().lower()
         if not metric_path:
             raise ConfigError(f"'gates[{i}].metric' is required")
         if not op:
@@ -306,9 +310,27 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
         if op not in GATE_OPERATORS:
             available = ", ".join(sorted(GATE_OPERATORS))
             raise ConfigError(f"'gates[{i}].op' must be one of: {available}")
+        if method not in GATE_METHODS:
+            available = ", ".join(sorted(GATE_METHODS))
+            raise ConfigError(f"'gates[{i}].method' must be one of: {available}")
         if "value" not in gate:
             raise ConfigError(f"'gates[{i}].value' is required")
-        gates.append(GateSpec(metric=metric_path, op=op, value=gate["value"]))
+        params_raw = gate.get("params", {})
+        params = _require_dict(params_raw, f"gates[{i}].params") if params_raw else {}
+        if method == "sprt_regression":
+            if op not in DIRECTION_HIGHER_IS_BETTER and op not in DIRECTION_LOWER_IS_BETTER:
+                raise ConfigError(
+                    f"'gates[{i}].op' must be one of >=, >, <=, < for method=sprt_regression"
+                )
+        gates.append(
+            GateSpec(
+                metric=metric_path,
+                op=op,
+                value=gate["value"],
+                method=method,
+                params=params,
+            )
+        )
     return gates
 
 

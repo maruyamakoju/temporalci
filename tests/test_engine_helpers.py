@@ -7,9 +7,13 @@ import pytest
 from temporalci.engine import (
     _build_sample_rows_with_retention,
     _compare,
+    _extract_metric_series,
     _compute_regressions,
     _create_run_dir,
     _evaluate_gates,
+    _paired_deltas_for_gate,
+    _read_sprt_params,
+    _run_sprt,
     _resolve_metric_path,
     _safe_unlink,
 )
@@ -95,7 +99,7 @@ def test_evaluate_gates_pass_and_fail() -> None:
         GateSpec(metric="score", op=">=", value=0.9),
     ]
     metrics = {"score": 0.7}
-    results = _evaluate_gates(gates, metrics)
+    results = _evaluate_gates(gates, metrics, baseline_metrics=None)
 
     assert len(results) == 2
     assert results[0]["passed"] is True
@@ -105,16 +109,119 @@ def test_evaluate_gates_pass_and_fail() -> None:
 
 def test_evaluate_gates_missing_metric() -> None:
     gates = [GateSpec(metric="missing.path", op=">=", value=0.5)]
-    results = _evaluate_gates(gates, {})
+    results = _evaluate_gates(gates, {}, baseline_metrics=None)
     assert results[0]["passed"] is False
     assert "error" in results[0]
 
 
 def test_evaluate_gates_unsupported_operator() -> None:
     gates = [GateSpec(metric="score", op="~=", value=0.5)]
-    results = _evaluate_gates(gates, {"score": 0.5})
+    results = _evaluate_gates(gates, {"score": 0.5}, baseline_metrics=None)
     assert results[0]["passed"] is False
     assert "unsupported operator" in results[0]["error"]
+
+
+def test_extract_metric_series_supports_temporal_score_from_dims() -> None:
+    payload = {
+        "vbench_temporal": {
+            "per_sample": [
+                {"test_id": "t1", "seed": 0, "prompt": "a", "dims": {"x": 0.2, "y": 0.8}},
+                {"test_id": "t1", "seed": 1, "prompt": "a", "dims": {"x": 0.4, "y": 0.6}},
+            ]
+        }
+    }
+    rows = _extract_metric_series(payload, "vbench_temporal.score")
+    assert len(rows) == 2
+    assert rows[0][1] == pytest.approx(0.5)
+    assert rows[1][1] == pytest.approx(0.5)
+
+
+def test_paired_deltas_for_gate_uses_key_matching() -> None:
+    current = {
+        "vbench_temporal": {
+            "per_sample": [
+                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.2}},
+                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.4}},
+            ]
+        }
+    }
+    baseline = {
+        "vbench_temporal": {
+            "per_sample": [
+                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.5}},
+                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.6}},
+            ]
+        }
+    }
+    deltas, summary = _paired_deltas_for_gate(
+        metric_path="vbench_temporal.dims.motion_smoothness",
+        op=">=",
+        current_metrics=current,
+        baseline_metrics=baseline,
+    )
+    assert summary["pairing"] == "key_match"
+    assert deltas == pytest.approx([-0.3, -0.2])
+
+
+def test_run_sprt_detects_regression() -> None:
+    params = _read_sprt_params(
+        {
+            "alpha": 0.05,
+            "beta": 0.1,
+            "effect_size": 0.05,
+            "sigma_floor": 0.01,
+            "min_pairs": 6,
+            "inconclusive": "fail",
+        }
+    )
+    deltas = [-0.2, -0.18, -0.21, -0.17, -0.16, -0.19, -0.2, -0.18]
+    payload = _run_sprt(deltas=deltas, params=params)
+    assert payload["decision"] == "accept_h0_regression"
+    assert payload["decision_passed"] is False
+
+
+def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:
+    current = {
+        "vbench_temporal": {
+            "score": 0.5,
+            "dims": {"motion_smoothness": 0.266667},
+            "per_sample": [
+                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.2}},
+                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.25}},
+                {"test_id": "t1", "seed": 2, "prompt": "p2", "dims": {"motion_smoothness": 0.3}},
+                {"test_id": "t1", "seed": 3, "prompt": "p3", "dims": {"motion_smoothness": 0.35}},
+                {"test_id": "t1", "seed": 4, "prompt": "p4", "dims": {"motion_smoothness": 0.28}},
+                {"test_id": "t1", "seed": 5, "prompt": "p5", "dims": {"motion_smoothness": 0.22}},
+            ],
+        }
+    }
+    baseline = {
+        "vbench_temporal": {
+            "score": 0.8,
+            "dims": {"motion_smoothness": 0.655},
+            "per_sample": [
+                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.65}},
+                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.66}},
+                {"test_id": "t1", "seed": 2, "prompt": "p2", "dims": {"motion_smoothness": 0.67}},
+                {"test_id": "t1", "seed": 3, "prompt": "p3", "dims": {"motion_smoothness": 0.64}},
+                {"test_id": "t1", "seed": 4, "prompt": "p4", "dims": {"motion_smoothness": 0.63}},
+                {"test_id": "t1", "seed": 5, "prompt": "p5", "dims": {"motion_smoothness": 0.68}},
+            ],
+        }
+    }
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.2,
+            method="sprt_regression",
+            params={"effect_size": 0.05, "min_pairs": 6, "inconclusive": "fail"},
+        )
+    ]
+    results = _evaluate_gates(gates, current, baseline_metrics=baseline)
+    assert results[0]["threshold_passed"] is True
+    assert results[0]["sprt"]["decision"] == "accept_h0_regression"
+    assert results[0]["passed"] is False
 
 
 # ---------------------------------------------------------------------------

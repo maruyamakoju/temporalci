@@ -1,0 +1,38 @@
+version: 1
+project: "demo-video-model"
+suite_name: "regression_sprt"
+models:
+  - name: "demo_mock_model"
+    adapter: "mock"
+    params:
+      quality_shift: 0.0
+      noise_scale: 0.06
+tests:
+  - id: "t2v_core_prompts"
+    type: "generation"
+    prompts:
+      - "a person walking in the rain, cinematic"
+      - "a robot arm assembling a small device on a table"
+      - "a city timelapse shot with smooth camera movement"
+      - "a static interview scene with minimal camera motion"
+    seeds: [0, 1, 2]
+    video:
+      num_frames: 25
+      fps: 6
+      resolution: 512
+metrics:
+  - name: "vbench_temporal"
+    params:
+      dims: ["temporal_flicker", "motion_smoothness", "subject_consistency"]
+gates:
+  - metric: "vbench_temporal.dims.motion_smoothness"
+    op: ">="
+    value: 0.45
+    method: "sprt_regression"
+    params:
+      alpha: 0.05
+      beta: 0.1
+      effect_size: 0.03
+      sigma_floor: 0.01
+      min_pairs: 6
+      inconclusive: "fail"

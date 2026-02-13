@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
+from statistics import mean
 from typing import Any
 
 from temporalci.adapters import build_adapter
 from temporalci.config import select_model
-from temporalci.constants import BASELINE_MODES, DIRECTION_HIGHER_IS_BETTER, DIRECTION_LOWER_IS_BETTER, GATE_OPERATORS
+from temporalci.constants import (
+    BASELINE_MODES,
+    DIRECTION_HIGHER_IS_BETTER,
+    DIRECTION_LOWER_IS_BETTER,
+    GATE_OPERATORS,
+)
 from temporalci.metrics import run_metric
 from temporalci.report import write_html_report
 from temporalci.types import GateSpec, GeneratedSample, SuiteSpec
@@ -71,13 +78,243 @@ def _compare(actual: Any, op: str, expected: Any) -> bool:
     raise ValueError(f"unsupported operator: {op}")
 
 
-def _evaluate_gates(gates: list[GateSpec], metrics_payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _split_metric_path(dotted_path: str) -> tuple[str, str]:
+    if "." not in dotted_path:
+        return dotted_path.strip(), ""
+    head, tail = dotted_path.split(".", 1)
+    return head.strip(), tail.strip()
+
+
+def _resolve_sample_metric_value(row: dict[str, Any], subpath: str) -> float | None:
+    if not subpath:
+        return None
+    if subpath == "score":
+        score = row.get("score")
+        if isinstance(score, (int, float)) and not isinstance(score, bool):
+            return float(score)
+        dims = row.get("dims")
+        if isinstance(dims, dict):
+            values: list[float] = []
+            for value in dims.values():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    values.append(float(value))
+            if values:
+                return float(mean(values))
+        return None
+    try:
+        value = _resolve_metric_path(row, subpath)
+    except KeyError:
+        return None
+    if not (isinstance(value, (int, float)) and not isinstance(value, bool)):
+        return None
+    return float(value)
+
+
+def _extract_metric_series(
+    metrics_payload: dict[str, Any],
+    metric_path: str,
+) -> list[tuple[str, float]]:
+    metric_name, subpath = _split_metric_path(metric_path)
+    metric_payload = metrics_payload.get(metric_name)
+    if not isinstance(metric_payload, dict):
+        return []
+    per_sample = metric_payload.get("per_sample")
+    if not isinstance(per_sample, list):
+        return []
+
+    rows: list[tuple[str, float]] = []
+    for idx, raw_row in enumerate(per_sample):
+        if not isinstance(raw_row, dict):
+            continue
+        value = _resolve_sample_metric_value(raw_row, subpath)
+        if value is None:
+            continue
+        key_parts: list[str] = []
+        for field in ("test_id", "seed", "prompt"):
+            field_value = raw_row.get(field)
+            if field_value is None:
+                continue
+            key_parts.append(str(field_value))
+        key = "|".join(key_parts) if key_parts else f"idx:{idx}"
+        rows.append((key, value))
+    return rows
+
+
+def _paired_deltas_for_gate(
+    *,
+    metric_path: str,
+    op: str,
+    current_metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any],
+) -> tuple[list[float], dict[str, Any]]:
+    current_rows = _extract_metric_series(current_metrics, metric_path)
+    baseline_rows = _extract_metric_series(baseline_metrics, metric_path)
+    if not current_rows or not baseline_rows:
+        return [], {
+            "pairing": "unavailable",
+            "current_series_count": len(current_rows),
+            "baseline_series_count": len(baseline_rows),
+            "paired_count": 0,
+        }
+
+    baseline_by_key = {key: value for key, value in baseline_rows}
+    deltas: list[float] = []
+    key_paired = 0
+    for key, current_value in current_rows:
+        baseline_value = baseline_by_key.get(key)
+        if baseline_value is None:
+            continue
+        if op in DIRECTION_HIGHER_IS_BETTER:
+            deltas.append(float(current_value) - float(baseline_value))
+        else:
+            deltas.append(float(baseline_value) - float(current_value))
+        key_paired += 1
+
+    if deltas:
+        return deltas, {
+            "pairing": "key_match",
+            "current_series_count": len(current_rows),
+            "baseline_series_count": len(baseline_rows),
+            "paired_count": key_paired,
+        }
+
+    # Fallback for legacy metrics that do not expose stable sample identifiers.
+    paired_count = min(len(current_rows), len(baseline_rows))
+    for idx in range(paired_count):
+        current_value = current_rows[idx][1]
+        baseline_value = baseline_rows[idx][1]
+        if op in DIRECTION_HIGHER_IS_BETTER:
+            deltas.append(float(current_value) - float(baseline_value))
+        else:
+            deltas.append(float(baseline_value) - float(current_value))
+    return deltas, {
+        "pairing": "index_fallback",
+        "current_series_count": len(current_rows),
+        "baseline_series_count": len(baseline_rows),
+        "paired_count": paired_count,
+    }
+
+
+def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
+    alpha = float(raw.get("alpha", 0.05))
+    beta = float(raw.get("beta", 0.1))
+    effect_size = abs(float(raw.get("effect_size", 0.02)))
+    sigma_floor = abs(float(raw.get("sigma_floor", 0.01)))
+    min_pairs = max(2, int(raw.get("min_pairs", 6)))
+    inconclusive = str(raw.get("inconclusive", "fail")).strip().lower()
+
+    if not (0.0 < alpha < 0.5):
+        raise ValueError("sprt alpha must be in (0, 0.5)")
+    if not (0.0 < beta < 0.5):
+        raise ValueError("sprt beta must be in (0, 0.5)")
+    if effect_size <= 0.0:
+        raise ValueError("sprt effect_size must be > 0")
+    if sigma_floor <= 0.0:
+        raise ValueError("sprt sigma_floor must be > 0")
+    if inconclusive not in {"fail", "pass"}:
+        raise ValueError("sprt inconclusive must be one of: fail, pass")
+
+    return {
+        "alpha": alpha,
+        "beta": beta,
+        "effect_size": effect_size,
+        "sigma_floor": sigma_floor,
+        "min_pairs": min_pairs,
+        "inconclusive": inconclusive,
+    }
+
+
+def _sample_std(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    avg = mean(values)
+    variance = sum((value - avg) ** 2 for value in values) / max(1, len(values) - 1)
+    return math.sqrt(max(0.0, variance))
+
+
+def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
+    alpha = float(params["alpha"])
+    beta = float(params["beta"])
+    effect_size = float(params["effect_size"])
+    sigma_floor = float(params["sigma_floor"])
+    min_pairs = int(params["min_pairs"])
+    inconclusive = str(params["inconclusive"])
+
+    if len(deltas) < min_pairs:
+        return {
+            "decision": "inconclusive",
+            "decision_passed": inconclusive == "pass",
+            "inconclusive_policy": inconclusive,
+            "reason": "insufficient_pairs",
+            "paired_count": len(deltas),
+            "min_pairs": min_pairs,
+            "alpha": alpha,
+            "beta": beta,
+            "effect_size": effect_size,
+            "sigma": None,
+            "llr": 0.0,
+        }
+
+    sigma = max(_sample_std(deltas), sigma_floor)
+    sigma_sq = sigma * sigma
+    mu0 = -effect_size
+    mu1 = 0.0
+    upper = math.log((1.0 - beta) / alpha)
+    lower = math.log(beta / (1.0 - alpha))
+
+    llr = 0.0
+    crossed_at: int | None = None
+    decision = "inconclusive"
+    for idx, delta in enumerate(deltas, start=1):
+        llr += (((delta - mu0) ** 2) - ((delta - mu1) ** 2)) / (2.0 * sigma_sq)
+        if idx < min_pairs:
+            continue
+        if llr >= upper:
+            decision = "accept_h1_no_regression"
+            crossed_at = idx
+            break
+        if llr <= lower:
+            decision = "accept_h0_regression"
+            crossed_at = idx
+            break
+
+    if decision == "accept_h1_no_regression":
+        decision_passed = True
+    elif decision == "accept_h0_regression":
+        decision_passed = False
+    else:
+        decision_passed = inconclusive == "pass"
+
+    return {
+        "decision": decision,
+        "decision_passed": decision_passed,
+        "inconclusive_policy": inconclusive,
+        "paired_count": len(deltas),
+        "min_pairs": min_pairs,
+        "alpha": alpha,
+        "beta": beta,
+        "effect_size": effect_size,
+        "sigma": round(float(sigma), 8),
+        "llr": round(float(llr), 8),
+        "upper_threshold": round(float(upper), 8),
+        "lower_threshold": round(float(lower), 8),
+        "crossed_at": crossed_at,
+    }
+
+
+def _evaluate_gates(
+    gates: list[GateSpec],
+    metrics_payload: dict[str, Any],
+    *,
+    baseline_metrics: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for gate in gates:
         result: dict[str, Any] = {
             "metric": gate.metric,
             "op": gate.op,
             "value": gate.value,
+            "method": gate.method,
             "actual": None,
             "passed": False,
         }
@@ -89,7 +326,35 @@ def _evaluate_gates(gates: list[GateSpec], metrics_payload: dict[str, Any]) -> l
         try:
             actual = _resolve_metric_path(metrics_payload, gate.metric)
             result["actual"] = actual
-            result["passed"] = _compare(actual, gate.op, gate.value)
+            threshold_passed = _compare(actual, gate.op, gate.value)
+            result["threshold_passed"] = threshold_passed
+
+            if gate.method != "sprt_regression":
+                result["passed"] = threshold_passed
+                results.append(result)
+                continue
+
+            if baseline_metrics is None:
+                result["sprt"] = {
+                    "decision": "skipped",
+                    "decision_passed": True,
+                    "reason": "baseline_missing",
+                }
+                result["passed"] = threshold_passed
+                results.append(result)
+                continue
+
+            params = _read_sprt_params(gate.params)
+            deltas, pairing_summary = _paired_deltas_for_gate(
+                metric_path=gate.metric,
+                op=gate.op,
+                current_metrics=metrics_payload,
+                baseline_metrics=baseline_metrics,
+            )
+            sprt_payload = _run_sprt(deltas=deltas, params=params)
+            sprt_payload["pairing"] = pairing_summary
+            result["sprt"] = sprt_payload
+            result["passed"] = threshold_passed and bool(sprt_payload["decision_passed"])
         except Exception as exc:  # noqa: BLE001
             result["error"] = str(exc)
             result["passed"] = False
@@ -343,32 +608,37 @@ def run_suite(
             params=metric_params,
         )
 
-    # 3. Evaluate gates
-    gates = _evaluate_gates(suite.gates, metrics_payload)
-    gate_failed = any(not gate.get("passed", False) for gate in gates)
-
-    # 4. Regression comparison
+    # 3. Load baseline
     baseline = _load_previous_run(
         model_root=model_root, current_run_id=run_id, baseline_mode=baseline_mode
     )
     baseline_metrics = baseline.get("metrics") if isinstance(baseline, dict) else None
     baseline_run_id = baseline.get("run_id") if isinstance(baseline, dict) else None
 
+    # 4. Evaluate gates
+    gates = _evaluate_gates(
+        suite.gates,
+        metrics_payload,
+        baseline_metrics=baseline_metrics if isinstance(baseline_metrics, dict) else None,
+    )
+    gate_failed = any(not gate.get("passed", False) for gate in gates)
+
+    # 5. Regression comparison
     regressions = _compute_regressions(
         gates=gates, current_metrics=metrics_payload, baseline_metrics=baseline_metrics
     )
     regression_failed = any(item["regressed"] for item in regressions)
 
-    # 5. Determine final status
+    # 6. Determine final status
     should_fail = gate_failed or (fail_on_regression and regression_failed)
     status = "FAIL" if should_fail else "PASS"
 
-    # 6. Apply retention policy
+    # 7. Apply retention policy
     sample_rows = _build_sample_rows_with_retention(
         samples=samples, status=status, artifacts_cfg=suite.artifacts
     )
 
-    # 7. Build result payload
+    # 8. Build result payload
     payload: dict[str, Any] = {
         "run_id": run_id,
         "timestamp_utc": timestamp,
@@ -388,7 +658,7 @@ def run_suite(
         "samples": sample_rows,
     }
 
-    # 8. Write artifacts
+    # 9. Write artifacts
     _write_run_artifacts(
         run_dir=run_dir,
         model_root=model_root,

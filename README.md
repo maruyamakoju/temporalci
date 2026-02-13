@@ -161,6 +161,32 @@ artifacts:
   keep_workdir: false     # used by some official metric backends
 ```
 
+## Statistical Regression Gate (SPRT)
+
+`method: sprt_regression` adds a sequential hypothesis test on top of the
+normal threshold gate. This is useful when a static threshold passes but
+sample-level quality shifts indicate statistically significant regression.
+
+Example suite: `examples/regression_sprt.yaml`
+
+Typical usage pattern:
+
+```bash
+# 1) establish baseline
+temporalci run examples/regression_sprt.yaml --baseline-mode none
+
+# 2) run candidate against latest passing baseline
+temporalci run examples/regression_sprt.yaml --baseline-mode latest_pass
+```
+
+Gate parameters:
+
+- `alpha`, `beta`: false-alarm / miss bounds for SPRT
+- `effect_size`: minimum practical regression to detect
+- `sigma_floor`: numerical stability floor for variance
+- `min_pairs`: minimum paired samples before a decision
+- `inconclusive`: `fail` or `pass`
+
 ## Distributed Mode
 
 Start coordinator:

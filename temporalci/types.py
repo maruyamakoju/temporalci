@@ -31,6 +31,8 @@ class GateSpec:
     metric: str
     op: str
     value: Any
+    method: str = "threshold"
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
