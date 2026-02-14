@@ -211,6 +211,18 @@ Operational recommendation:
 `report.html` now includes an **SPRT Analysis** section with decision, LLR thresholds,
 pairing ratio, and worst sample deltas for fast root-cause review.
 
+Calibrate fixed-sigma settings from repeated no-change runs:
+
+```bash
+python scripts/calibrate_sprt.py \
+  --suite examples/regression_sprt.yaml \
+  --runs 8 \
+  --artifacts-dir artifacts/sprt-calibration
+```
+
+This writes `sprt_calibration.json` with recommended `sigma`, estimated required
+pair counts, and per-run pairing quality diagnostics.
+
 ## Distributed Mode
 
 Start coordinator:
