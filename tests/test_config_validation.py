@@ -104,3 +104,64 @@ def test_gate_sprt_rejects_non_directional_operator(tmp_path: Path) -> None:
     ]
     with pytest.raises(SuiteValidationError):
         load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_invalid_baseline_missing_policy(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"baseline_missing": "unknown"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_invalid_pairing_mode(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"pairing_mode": "bad_mode"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_skip_policy_when_require_baseline_true(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"require_baseline": True, "baseline_missing": "skip"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_allows_skip_policy_with_require_baseline_false(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"require_baseline": False, "baseline_missing": "skip"},
+        }
+    ]
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.gates[0].params["require_baseline"] is False
+    assert suite.gates[0].params["baseline_missing"] == "skip"

@@ -322,6 +322,24 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                 raise ConfigError(
                     f"'gates[{i}].op' must be one of >=, >, <=, < for method=sprt_regression"
                 )
+            require_baseline = as_bool(params.get("require_baseline", True), default=True)
+            if "baseline_missing" in params:
+                policy = str(params["baseline_missing"]).strip().lower()
+                if policy not in {"fail", "pass", "skip"}:
+                    raise ConfigError(
+                        f"'gates[{i}].params.baseline_missing' must be one of: fail, pass, skip"
+                    )
+                if require_baseline and policy == "skip":
+                    raise ConfigError(
+                        f"'gates[{i}].params.baseline_missing=skip' requires "
+                        "'gates[{i}].params.require_baseline=false'"
+                    )
+            if "pairing_mode" in params:
+                pairing_mode = str(params["pairing_mode"]).strip().lower()
+                if pairing_mode not in {"sample_id", "legacy"}:
+                    raise ConfigError(
+                        f"'gates[{i}].params.pairing_mode' must be one of: sample_id, legacy"
+                    )
         gates.append(
             GateSpec(
                 metric=metric_path,

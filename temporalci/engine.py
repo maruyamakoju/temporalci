@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -17,7 +18,7 @@ from temporalci.constants import (
 from temporalci.metrics import run_metric
 from temporalci.report import write_html_report
 from temporalci.types import GateSpec, GeneratedSample, SuiteSpec
-from temporalci.utils import is_number, utc_now
+from temporalci.utils import as_bool, is_number, normalize_prompt, utc_now
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -110,34 +111,65 @@ def _resolve_sample_metric_value(row: dict[str, Any], subpath: str) -> float | N
     return float(value)
 
 
+def _build_legacy_series_key(row: dict[str, Any], *, fallback_index: int) -> str:
+    key_parts: list[str] = []
+    for field in ("test_id", "seed", "prompt"):
+        field_value = row.get(field)
+        if field_value is None:
+            continue
+        key_parts.append(str(field_value))
+    if key_parts:
+        return "|".join(key_parts)
+    return f"idx:{fallback_index}"
+
+
 def _extract_metric_series(
     metrics_payload: dict[str, Any],
     metric_path: str,
-) -> list[tuple[str, float]]:
+    *,
+    require_sample_id: bool,
+    allow_legacy_pairing: bool,
+) -> tuple[list[tuple[str, float]], dict[str, Any]]:
     metric_name, subpath = _split_metric_path(metric_path)
     metric_payload = metrics_payload.get(metric_name)
     if not isinstance(metric_payload, dict):
-        return []
+        return [], {
+            "total_rows": 0,
+            "usable_rows": 0,
+            "missing_sample_id_count": 0,
+        }
     per_sample = metric_payload.get("per_sample")
     if not isinstance(per_sample, list):
-        return []
+        return [], {
+            "total_rows": 0,
+            "usable_rows": 0,
+            "missing_sample_id_count": 0,
+        }
 
     rows: list[tuple[str, float]] = []
+    missing_sample_id_count = 0
     for idx, raw_row in enumerate(per_sample):
         if not isinstance(raw_row, dict):
             continue
         value = _resolve_sample_metric_value(raw_row, subpath)
         if value is None:
             continue
-        key_parts: list[str] = []
-        for field in ("test_id", "seed", "prompt"):
-            field_value = raw_row.get(field)
-            if field_value is None:
+
+        raw_sample_id = raw_row.get("sample_id")
+        sample_id = str(raw_sample_id).strip() if raw_sample_id is not None else ""
+        if sample_id:
+            key = f"sid:{sample_id}"
+        else:
+            missing_sample_id_count += 1
+            if require_sample_id and not allow_legacy_pairing:
                 continue
-            key_parts.append(str(field_value))
-        key = "|".join(key_parts) if key_parts else f"idx:{idx}"
+            key = _build_legacy_series_key(raw_row, fallback_index=idx)
         rows.append((key, value))
-    return rows
+    return rows, {
+        "total_rows": len(per_sample),
+        "usable_rows": len(rows),
+        "missing_sample_id_count": missing_sample_id_count,
+    }
 
 
 def _paired_deltas_for_gate(
@@ -146,15 +178,37 @@ def _paired_deltas_for_gate(
     op: str,
     current_metrics: dict[str, Any],
     baseline_metrics: dict[str, Any],
+    require_sample_id: bool,
+    allow_legacy_pairing: bool,
 ) -> tuple[list[float], dict[str, Any]]:
-    current_rows = _extract_metric_series(current_metrics, metric_path)
-    baseline_rows = _extract_metric_series(baseline_metrics, metric_path)
+    current_rows, current_meta = _extract_metric_series(
+        current_metrics,
+        metric_path,
+        require_sample_id=require_sample_id,
+        allow_legacy_pairing=allow_legacy_pairing,
+    )
+    baseline_rows, baseline_meta = _extract_metric_series(
+        baseline_metrics,
+        metric_path,
+        require_sample_id=require_sample_id,
+        allow_legacy_pairing=allow_legacy_pairing,
+    )
+    expected_pairs = min(len(current_rows), len(baseline_rows))
+    base_summary = {
+        "current_series_count": len(current_rows),
+        "baseline_series_count": len(baseline_rows),
+        "expected_pairs": expected_pairs,
+        "current_missing_sample_id_count": int(current_meta["missing_sample_id_count"]),
+        "baseline_missing_sample_id_count": int(baseline_meta["missing_sample_id_count"]),
+        "require_sample_id": require_sample_id,
+        "allow_legacy_pairing": allow_legacy_pairing,
+    }
     if not current_rows or not baseline_rows:
         return [], {
             "pairing": "unavailable",
-            "current_series_count": len(current_rows),
-            "baseline_series_count": len(baseline_rows),
             "paired_count": 0,
+            "paired_ratio": 0.0,
+            **base_summary,
         }
 
     baseline_by_key = {key: value for key, value in baseline_rows}
@@ -173,12 +227,20 @@ def _paired_deltas_for_gate(
     if deltas:
         return deltas, {
             "pairing": "key_match",
-            "current_series_count": len(current_rows),
-            "baseline_series_count": len(baseline_rows),
             "paired_count": key_paired,
+            "paired_ratio": round(float(key_paired) / max(1, expected_pairs), 6),
+            **base_summary,
         }
 
-    # Fallback for legacy metrics that do not expose stable sample identifiers.
+    if not allow_legacy_pairing:
+        return [], {
+            "pairing": "key_mismatch",
+            "paired_count": 0,
+            "paired_ratio": 0.0,
+            **base_summary,
+        }
+
+    # Optional fallback for legacy metrics that do not expose stable sample identifiers.
     paired_count = min(len(current_rows), len(baseline_rows))
     for idx in range(paired_count):
         current_value = current_rows[idx][1]
@@ -189,9 +251,9 @@ def _paired_deltas_for_gate(
             deltas.append(float(baseline_value) - float(current_value))
     return deltas, {
         "pairing": "index_fallback",
-        "current_series_count": len(current_rows),
-        "baseline_series_count": len(baseline_rows),
         "paired_count": paired_count,
+        "paired_ratio": round(float(paired_count) / max(1, expected_pairs), 6),
+        **base_summary,
     }
 
 
@@ -202,6 +264,10 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
     sigma_floor = abs(float(raw.get("sigma_floor", 0.01)))
     min_pairs = max(2, int(raw.get("min_pairs", 6)))
     inconclusive = str(raw.get("inconclusive", "fail")).strip().lower()
+    require_baseline = as_bool(raw.get("require_baseline", True), default=True)
+    baseline_missing = str(raw.get("baseline_missing", "fail")).strip().lower()
+    pairing_mode = str(raw.get("pairing_mode", "sample_id")).strip().lower()
+    allow_index_fallback = as_bool(raw.get("allow_index_fallback", False), default=False)
 
     if not (0.0 < alpha < 0.5):
         raise ValueError("sprt alpha must be in (0, 0.5)")
@@ -213,6 +279,10 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("sprt sigma_floor must be > 0")
     if inconclusive not in {"fail", "pass"}:
         raise ValueError("sprt inconclusive must be one of: fail, pass")
+    if baseline_missing not in {"fail", "pass", "skip"}:
+        raise ValueError("sprt baseline_missing must be one of: fail, pass, skip")
+    if pairing_mode not in {"sample_id", "legacy"}:
+        raise ValueError("sprt pairing_mode must be one of: sample_id, legacy")
 
     return {
         "alpha": alpha,
@@ -221,6 +291,10 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         "sigma_floor": sigma_floor,
         "min_pairs": min_pairs,
         "inconclusive": inconclusive,
+        "require_baseline": require_baseline,
+        "baseline_missing": baseline_missing,
+        "pairing_mode": pairing_mode,
+        "allow_index_fallback": allow_index_fallback,
     }
 
 
@@ -334,22 +408,34 @@ def _evaluate_gates(
                 results.append(result)
                 continue
 
+            params = _read_sprt_params(gate.params)
             if baseline_metrics is None:
+                baseline_missing = str(params["baseline_missing"])
+                require_baseline = bool(params["require_baseline"])
+                if require_baseline and baseline_missing == "skip":
+                    baseline_missing = "fail"
+                decision_passed = baseline_missing in {"pass", "skip"}
                 result["sprt"] = {
-                    "decision": "skipped",
-                    "decision_passed": True,
+                    "decision": "baseline_missing",
+                    "decision_passed": decision_passed,
                     "reason": "baseline_missing",
+                    "baseline_missing_policy": baseline_missing,
+                    "require_baseline": require_baseline,
                 }
-                result["passed"] = threshold_passed
+                result["passed"] = threshold_passed and decision_passed
                 results.append(result)
                 continue
 
-            params = _read_sprt_params(gate.params)
+            pairing_mode = str(params["pairing_mode"])
             deltas, pairing_summary = _paired_deltas_for_gate(
                 metric_path=gate.metric,
                 op=gate.op,
                 current_metrics=metrics_payload,
                 baseline_metrics=baseline_metrics,
+                require_sample_id=pairing_mode == "sample_id",
+                allow_legacy_pairing=(
+                    pairing_mode == "legacy" or bool(params["allow_index_fallback"])
+                ),
             )
             sprt_payload = _run_sprt(deltas=deltas, params=params)
             sprt_payload["pairing"] = pairing_summary
@@ -508,6 +594,23 @@ def _build_sample_rows_with_retention(
 # ---------------------------------------------------------------------------
 
 
+def _build_sample_id(
+    *,
+    test_id: str,
+    prompt: str,
+    seed: int,
+    video_cfg: dict[str, Any],
+) -> str:
+    payload = {
+        "test_id": test_id,
+        "prompt": normalize_prompt(prompt),
+        "seed": int(seed),
+        "video_cfg": video_cfg,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()[:16]
+
+
 def _generate_samples(
     *,
     suite: SuiteSpec,
@@ -529,6 +632,15 @@ def _generate_samples(
                     video_cfg=effective_video_cfg,
                     output_dir=videos_dir,
                 )
+                sample_id = _build_sample_id(
+                    test_id=test.id,
+                    prompt=prompt,
+                    seed=int(seed),
+                    video_cfg=effective_video_cfg,
+                )
+                metadata = dict(sample.metadata)
+                metadata.setdefault("sample_id", sample_id)
+                sample.metadata = metadata
                 samples.append(sample)
     return samples
 

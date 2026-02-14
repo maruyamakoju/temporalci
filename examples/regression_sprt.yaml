@@ -36,3 +36,6 @@ gates:
       sigma_floor: 0.01
       min_pairs: 6
       inconclusive: "fail"
+      require_baseline: false
+      baseline_missing: "skip"
+      pairing_mode: "sample_id"

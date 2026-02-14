@@ -125,31 +125,92 @@ def test_extract_metric_series_supports_temporal_score_from_dims() -> None:
     payload = {
         "vbench_temporal": {
             "per_sample": [
+                {
+                    "sample_id": "s1",
+                    "test_id": "t1",
+                    "seed": 0,
+                    "prompt": "a",
+                    "dims": {"x": 0.2, "y": 0.8},
+                },
+                {
+                    "sample_id": "s2",
+                    "test_id": "t1",
+                    "seed": 1,
+                    "prompt": "a",
+                    "dims": {"x": 0.4, "y": 0.6},
+                },
+            ]
+        }
+    }
+    rows, meta = _extract_metric_series(
+        payload,
+        "vbench_temporal.score",
+        require_sample_id=True,
+        allow_legacy_pairing=False,
+    )
+    assert len(rows) == 2
+    assert meta["missing_sample_id_count"] == 0
+    assert rows[0] == ("sid:s1", pytest.approx(0.5))
+    assert rows[1] == ("sid:s2", pytest.approx(0.5))
+
+
+def test_extract_metric_series_strict_mode_skips_rows_without_sample_id() -> None:
+    payload = {
+        "vbench_temporal": {
+            "per_sample": [
                 {"test_id": "t1", "seed": 0, "prompt": "a", "dims": {"x": 0.2, "y": 0.8}},
                 {"test_id": "t1", "seed": 1, "prompt": "a", "dims": {"x": 0.4, "y": 0.6}},
             ]
         }
     }
-    rows = _extract_metric_series(payload, "vbench_temporal.score")
-    assert len(rows) == 2
-    assert rows[0][1] == pytest.approx(0.5)
-    assert rows[1][1] == pytest.approx(0.5)
+    rows, meta = _extract_metric_series(
+        payload,
+        "vbench_temporal.score",
+        require_sample_id=True,
+        allow_legacy_pairing=False,
+    )
+    assert rows == []
+    assert meta["missing_sample_id_count"] == 2
 
 
 def test_paired_deltas_for_gate_uses_key_matching() -> None:
     current = {
         "vbench_temporal": {
             "per_sample": [
-                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.2}},
-                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.4}},
+                {
+                    "sample_id": "s1",
+                    "test_id": "t1",
+                    "seed": 0,
+                    "prompt": "p0",
+                    "dims": {"motion_smoothness": 0.2},
+                },
+                {
+                    "sample_id": "s2",
+                    "test_id": "t1",
+                    "seed": 1,
+                    "prompt": "p1",
+                    "dims": {"motion_smoothness": 0.4},
+                },
             ]
         }
     }
     baseline = {
         "vbench_temporal": {
             "per_sample": [
-                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.5}},
-                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.6}},
+                {
+                    "sample_id": "s1",
+                    "test_id": "t1",
+                    "seed": 0,
+                    "prompt": "p0",
+                    "dims": {"motion_smoothness": 0.5},
+                },
+                {
+                    "sample_id": "s2",
+                    "test_id": "t1",
+                    "seed": 1,
+                    "prompt": "p1",
+                    "dims": {"motion_smoothness": 0.6},
+                },
             ]
         }
     }
@@ -158,9 +219,12 @@ def test_paired_deltas_for_gate_uses_key_matching() -> None:
         op=">=",
         current_metrics=current,
         baseline_metrics=baseline,
+        require_sample_id=True,
+        allow_legacy_pairing=False,
     )
     assert summary["pairing"] == "key_match"
     assert deltas == pytest.approx([-0.3, -0.2])
+    assert summary["paired_ratio"] == 1.0
 
 
 def test_run_sprt_detects_regression() -> None:
@@ -186,12 +250,48 @@ def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:
             "score": 0.5,
             "dims": {"motion_smoothness": 0.266667},
             "per_sample": [
-                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.2}},
-                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.25}},
-                {"test_id": "t1", "seed": 2, "prompt": "p2", "dims": {"motion_smoothness": 0.3}},
-                {"test_id": "t1", "seed": 3, "prompt": "p3", "dims": {"motion_smoothness": 0.35}},
-                {"test_id": "t1", "seed": 4, "prompt": "p4", "dims": {"motion_smoothness": 0.28}},
-                {"test_id": "t1", "seed": 5, "prompt": "p5", "dims": {"motion_smoothness": 0.22}},
+                {
+                    "sample_id": "s0",
+                    "test_id": "t1",
+                    "seed": 0,
+                    "prompt": "p0",
+                    "dims": {"motion_smoothness": 0.2},
+                },
+                {
+                    "sample_id": "s1",
+                    "test_id": "t1",
+                    "seed": 1,
+                    "prompt": "p1",
+                    "dims": {"motion_smoothness": 0.25},
+                },
+                {
+                    "sample_id": "s2",
+                    "test_id": "t1",
+                    "seed": 2,
+                    "prompt": "p2",
+                    "dims": {"motion_smoothness": 0.3},
+                },
+                {
+                    "sample_id": "s3",
+                    "test_id": "t1",
+                    "seed": 3,
+                    "prompt": "p3",
+                    "dims": {"motion_smoothness": 0.35},
+                },
+                {
+                    "sample_id": "s4",
+                    "test_id": "t1",
+                    "seed": 4,
+                    "prompt": "p4",
+                    "dims": {"motion_smoothness": 0.28},
+                },
+                {
+                    "sample_id": "s5",
+                    "test_id": "t1",
+                    "seed": 5,
+                    "prompt": "p5",
+                    "dims": {"motion_smoothness": 0.22},
+                },
             ],
         }
     }
@@ -200,12 +300,48 @@ def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:
             "score": 0.8,
             "dims": {"motion_smoothness": 0.655},
             "per_sample": [
-                {"test_id": "t1", "seed": 0, "prompt": "p0", "dims": {"motion_smoothness": 0.65}},
-                {"test_id": "t1", "seed": 1, "prompt": "p1", "dims": {"motion_smoothness": 0.66}},
-                {"test_id": "t1", "seed": 2, "prompt": "p2", "dims": {"motion_smoothness": 0.67}},
-                {"test_id": "t1", "seed": 3, "prompt": "p3", "dims": {"motion_smoothness": 0.64}},
-                {"test_id": "t1", "seed": 4, "prompt": "p4", "dims": {"motion_smoothness": 0.63}},
-                {"test_id": "t1", "seed": 5, "prompt": "p5", "dims": {"motion_smoothness": 0.68}},
+                {
+                    "sample_id": "s0",
+                    "test_id": "t1",
+                    "seed": 0,
+                    "prompt": "p0",
+                    "dims": {"motion_smoothness": 0.65},
+                },
+                {
+                    "sample_id": "s1",
+                    "test_id": "t1",
+                    "seed": 1,
+                    "prompt": "p1",
+                    "dims": {"motion_smoothness": 0.66},
+                },
+                {
+                    "sample_id": "s2",
+                    "test_id": "t1",
+                    "seed": 2,
+                    "prompt": "p2",
+                    "dims": {"motion_smoothness": 0.67},
+                },
+                {
+                    "sample_id": "s3",
+                    "test_id": "t1",
+                    "seed": 3,
+                    "prompt": "p3",
+                    "dims": {"motion_smoothness": 0.64},
+                },
+                {
+                    "sample_id": "s4",
+                    "test_id": "t1",
+                    "seed": 4,
+                    "prompt": "p4",
+                    "dims": {"motion_smoothness": 0.63},
+                },
+                {
+                    "sample_id": "s5",
+                    "test_id": "t1",
+                    "seed": 5,
+                    "prompt": "p5",
+                    "dims": {"motion_smoothness": 0.68},
+                },
             ],
         }
     }
@@ -222,6 +358,50 @@ def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:
     assert results[0]["threshold_passed"] is True
     assert results[0]["sprt"]["decision"] == "accept_h0_regression"
     assert results[0]["passed"] is False
+
+
+def test_evaluate_gates_sprt_baseline_missing_defaults_to_fail() -> None:
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.1,
+            method="sprt_regression",
+            params={},
+        )
+    ]
+    metrics = {
+        "vbench_temporal": {
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [{"sample_id": "s1", "dims": {"motion_smoothness": 0.5}}],
+        }
+    }
+    results = _evaluate_gates(gates, metrics, baseline_metrics=None)
+    assert results[0]["threshold_passed"] is True
+    assert results[0]["sprt"]["baseline_missing_policy"] == "fail"
+    assert results[0]["passed"] is False
+
+
+def test_evaluate_gates_sprt_baseline_missing_skip_allows_threshold_pass() -> None:
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.1,
+            method="sprt_regression",
+            params={"require_baseline": False, "baseline_missing": "skip"},
+        )
+    ]
+    metrics = {
+        "vbench_temporal": {
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [{"sample_id": "s1", "dims": {"motion_smoothness": 0.5}}],
+        }
+    }
+    results = _evaluate_gates(gates, metrics, baseline_metrics=None)
+    assert results[0]["threshold_passed"] is True
+    assert results[0]["sprt"]["baseline_missing_policy"] == "skip"
+    assert results[0]["passed"] is True
 
 
 # ---------------------------------------------------------------------------

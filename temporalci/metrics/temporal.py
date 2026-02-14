@@ -62,6 +62,7 @@ def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = Non
                 "test_id": sample.test_id,
                 "prompt": sample.prompt,
                 "seed": sample.seed,
+                "sample_id": sample.metadata.get("sample_id"),
                 "dims": sample_dims,
             }
         )

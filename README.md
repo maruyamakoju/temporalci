@@ -172,7 +172,7 @@ Example suite: `examples/regression_sprt.yaml`
 Typical usage pattern:
 
 ```bash
-# 1) establish baseline
+# 1) establish baseline (example suite is configured to allow bootstrap)
 temporalci run examples/regression_sprt.yaml --baseline-mode none
 
 # 2) run candidate against latest passing baseline
@@ -186,6 +186,14 @@ Gate parameters:
 - `sigma_floor`: numerical stability floor for variance
 - `min_pairs`: minimum paired samples before a decision
 - `inconclusive`: `fail` or `pass`
+- `require_baseline`: default `true`; if enabled and baseline is missing, gate fails
+- `baseline_missing`: `fail | pass | skip` policy for missing baseline handling
+- `pairing_mode`: `sample_id` (recommended) or `legacy`
+
+Operational recommendation:
+
+- Use `pairing_mode: sample_id` and keep `require_baseline: true` in production.
+- Use `baseline_missing: skip` only for one-time baseline bootstrap.
 
 ## Distributed Mode
 
