@@ -1,8 +1,56 @@
 from __future__ import annotations
 
 from html import escape
+import math
 from pathlib import Path
 from typing import Any
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_float(value: float | None, digits: int = 6) -> str:
+    if value is None or not math.isfinite(value):
+        return ""
+    return f"{value:.{digits}f}"
+
+
+def _sprt_derived_metrics(*, sprt: dict[str, Any], paired_count: Any) -> dict[str, float | None]:
+    effect_size = _float_or_none(sprt.get("effect_size"))
+    sigma = _float_or_none(sprt.get("sigma"))
+    llr = _float_or_none(sprt.get("llr"))
+    upper = _float_or_none(sprt.get("upper_threshold"))
+    lower = _float_or_none(sprt.get("lower_threshold"))
+    paired = _float_or_none(paired_count)
+
+    drift_per_pair: float | None = None
+    if effect_size is not None and sigma is not None and sigma > 0.0:
+        drift_per_pair = (effect_size * effect_size) / (2.0 * sigma * sigma)
+        if not math.isfinite(drift_per_pair) or drift_per_pair <= 0.0:
+            drift_per_pair = None
+
+    required_pairs_upper: float | None = None
+    required_pairs_lower: float | None = None
+    if drift_per_pair is not None and upper is not None and lower is not None:
+        required_pairs_upper = upper / drift_per_pair
+        required_pairs_lower = abs(lower) / drift_per_pair
+
+    llr_per_pair: float | None = None
+    if llr is not None and paired is not None and paired > 0.0:
+        llr_per_pair = llr / paired
+
+    return {
+        "drift_per_pair": drift_per_pair,
+        "required_pairs_upper": required_pairs_upper,
+        "required_pairs_lower": required_pairs_lower,
+        "llr_per_pair": llr_per_pair,
+    }
 
 
 def _render_metrics(metrics: dict[str, Any]) -> str:
@@ -50,6 +98,7 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
         paired_count = pairing_dict.get("paired_count", sprt.get("paired_count", ""))
         paired_ratio = pairing_dict.get("paired_ratio", sprt.get("paired_ratio", ""))
         worst_deltas = pairing_dict.get("worst_deltas")
+        derived = _sprt_derived_metrics(sprt=sprt, paired_count=paired_count)
 
         details: dict[str, Any] = {}
         for key in (
@@ -80,8 +129,16 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
         ):
             if key in pairing_dict:
                 details[f"pairing.{key}"] = pairing_dict[key]
+        for key, value in derived.items():
+            if value is not None:
+                details[f"sprt.{key}"] = value
 
         status = "PASS" if sprt.get("decision_passed") else "FAIL"
+        req_pairs_upper = _fmt_float(derived["required_pairs_upper"], 2)
+        req_pairs_lower = _fmt_float(derived["required_pairs_lower"], 2)
+        req_pairs = ""
+        if req_pairs_upper or req_pairs_lower:
+            req_pairs = f"{req_pairs_upper} / {req_pairs_lower}"
         rows.append(
             "<tr>"
             f"<td>{escape(str(gate.get('metric')))}</td>"
@@ -90,14 +147,17 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
             f"<td>{escape(str(paired_count))}</td>"
             f"<td>{escape(str(paired_ratio))}</td>"
             f"<td>{escape(str(sprt.get('llr', '')))}</td>"
+            f"<td>{escape(_fmt_float(derived['llr_per_pair'], 6))}</td>"
             f"<td>{escape(str(sprt.get('upper_threshold', '')))}</td>"
             f"<td>{escape(str(sprt.get('lower_threshold', '')))}</td>"
+            f"<td>{escape(_fmt_float(derived['drift_per_pair'], 8))}</td>"
+            f"<td>{escape(req_pairs)}</td>"
             f"<td>{escape(str(sprt.get('crossed_at', '')))}</td>"
             f"<td><pre>{escape(str(details))}</pre></td>"
             "</tr>"
         )
     if not rows:
-        return "<tr><td colspan='10'>No SPRT gates.</td></tr>"
+        return "<tr><td colspan='13'>No SPRT gates.</td></tr>"
     return "\n".join(rows)
 
 
@@ -195,7 +255,7 @@ def write_html_report(path: Path, payload: dict[str, Any]) -> None:
 
   <h2>SPRT Analysis</h2>
   <table>
-    <thead><tr><th>Metric</th><th>Decision</th><th>Status</th><th>Paired</th><th>Paired Ratio</th><th>LLR</th><th>Upper</th><th>Lower</th><th>Crossed At</th><th>Details</th></tr></thead>
+    <thead><tr><th>Metric</th><th>Decision</th><th>Status</th><th>Paired</th><th>Paired Ratio</th><th>LLR</th><th>LLR / Pair</th><th>Upper</th><th>Lower</th><th>Drift / Pair</th><th>Req Pairs (U/L)</th><th>Crossed At</th><th>Details</th></tr></thead>
     <tbody>{_render_sprt_gates(gates_render_input)}</tbody>
   </table>
 

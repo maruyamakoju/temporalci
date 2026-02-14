@@ -119,6 +119,7 @@ def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
                 "pairing_mismatch_policy": "fail",
                 "sigma_mode": "fixed",
                 "sigma": 0.04,
+                "effect_size": 0.02,
                 "llr": 3.2,
                 "upper_threshold": 2.89,
                 "lower_threshold": -2.25,
@@ -151,3 +152,8 @@ def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
     assert "pairing.current_series_count" in content
     assert "worst_deltas" in content
     assert "paired_ratio" in content
+    assert "Req Pairs (U/L)" in content
+    assert "sprt.required_pairs_upper" in content
+    assert "sprt.required_pairs_lower" in content
+    assert "sprt.drift_per_pair" in content
+    assert "sprt.llr_per_pair" in content

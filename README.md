@@ -209,7 +209,8 @@ Operational recommendation:
 - Use `baseline_missing: skip` only for one-time baseline bootstrap.
 
 `report.html` now includes an **SPRT Analysis** section with decision, LLR thresholds,
-pairing ratio, and worst sample deltas for fast root-cause review.
+pairing ratio, worst sample deltas, and derived diagnostics:
+`drift_per_pair`, `required_pairs_upper/lower`, and `llr_per_pair`.
 
 Calibrate fixed-sigma settings from repeated no-change runs:
 
