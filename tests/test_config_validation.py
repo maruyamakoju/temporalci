@@ -165,3 +165,64 @@ def test_gate_sprt_allows_skip_policy_with_require_baseline_false(tmp_path: Path
     suite = load_suite(_write_yaml(tmp_path, payload))
     assert suite.gates[0].params["require_baseline"] is False
     assert suite.gates[0].params["baseline_missing"] == "skip"
+
+
+def test_gate_sprt_rejects_invalid_sigma_mode(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"sigma_mode": "bad_mode"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_fixed_sigma_mode_without_sigma(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"sigma_mode": "fixed"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_rejects_non_positive_sigma(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"sigma_mode": "fixed", "sigma": 0},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_allows_fixed_sigma_mode_with_positive_sigma(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"sigma_mode": "fixed", "sigma": 0.05},
+        }
+    ]
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.gates[0].params["sigma_mode"] == "fixed"
+    assert suite.gates[0].params["sigma"] == 0.05

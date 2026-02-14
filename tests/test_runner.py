@@ -251,6 +251,8 @@ def test_sprt_gate_can_bootstrap_with_explicit_skip_policy(tmp_path: Path) -> No
                 "method": "sprt_regression",
                 "params": {
                     "effect_size": 0.03,
+                    "sigma_mode": "fixed",
+                    "sigma": 0.05,
                     "min_pairs": 6,
                     "inconclusive": "fail",
                     "require_baseline": False,
@@ -294,4 +296,5 @@ def test_sprt_gate_can_bootstrap_with_explicit_skip_policy(tmp_path: Path) -> No
     assert degraded_result["status"] == "FAIL"
     assert degraded_result["gate_failed"] is True
     sprt = degraded_result["gates"][0]["sprt"]
+    assert sprt["sigma_mode"] == "fixed"
     assert sprt["decision_passed"] is False

@@ -322,6 +322,29 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                 raise ConfigError(
                     f"'gates[{i}].op' must be one of >=, >, <=, < for method=sprt_regression"
                 )
+            sigma_mode = "estimate"
+            if "sigma_mode" in params:
+                sigma_mode = str(params["sigma_mode"]).strip().lower()
+                if sigma_mode not in {"estimate", "fixed"}:
+                    raise ConfigError(
+                        f"'gates[{i}].params.sigma_mode' must be one of: estimate, fixed"
+                    )
+            if "sigma" in params:
+                try:
+                    sigma = float(params["sigma"])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'gates[{i}].params.sigma' must be a positive number"
+                    ) from exc
+                if sigma <= 0.0:
+                    raise ConfigError(
+                        f"'gates[{i}].params.sigma' must be a positive number"
+                    )
+            if sigma_mode == "fixed" and "sigma" not in params:
+                raise ConfigError(
+                    f"'gates[{i}].params.sigma' is required when "
+                    f"'gates[{i}].params.sigma_mode=fixed'"
+                )
             require_baseline = as_bool(params.get("require_baseline", True), default=True)
             if "baseline_missing" in params:
                 policy = str(params["baseline_missing"]).strip().lower()

@@ -262,6 +262,8 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
     beta = float(raw.get("beta", 0.1))
     effect_size = abs(float(raw.get("effect_size", 0.02)))
     sigma_floor = abs(float(raw.get("sigma_floor", 0.01)))
+    sigma_mode = str(raw.get("sigma_mode", "estimate")).strip().lower()
+    sigma_value_raw = raw.get("sigma")
     min_pairs = max(2, int(raw.get("min_pairs", 6)))
     inconclusive = str(raw.get("inconclusive", "fail")).strip().lower()
     require_baseline = as_bool(raw.get("require_baseline", True), default=True)
@@ -277,6 +279,8 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("sprt effect_size must be > 0")
     if sigma_floor <= 0.0:
         raise ValueError("sprt sigma_floor must be > 0")
+    if sigma_mode not in {"estimate", "fixed"}:
+        raise ValueError("sprt sigma_mode must be one of: estimate, fixed")
     if inconclusive not in {"fail", "pass"}:
         raise ValueError("sprt inconclusive must be one of: fail, pass")
     if baseline_missing not in {"fail", "pass", "skip"}:
@@ -284,11 +288,21 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
     if pairing_mode not in {"sample_id", "legacy"}:
         raise ValueError("sprt pairing_mode must be one of: sample_id, legacy")
 
+    sigma: float | None = None
+    if sigma_value_raw is not None:
+        sigma = abs(float(sigma_value_raw))
+        if sigma <= 0.0:
+            raise ValueError("sprt sigma must be > 0 when provided")
+    if sigma_mode == "fixed" and sigma is None:
+        raise ValueError("sprt sigma must be provided when sigma_mode=fixed")
+
     return {
         "alpha": alpha,
         "beta": beta,
         "effect_size": effect_size,
         "sigma_floor": sigma_floor,
+        "sigma_mode": sigma_mode,
+        "sigma": sigma,
         "min_pairs": min_pairs,
         "inconclusive": inconclusive,
         "require_baseline": require_baseline,
@@ -311,10 +325,15 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
     beta = float(params["beta"])
     effect_size = float(params["effect_size"])
     sigma_floor = float(params["sigma_floor"])
+    sigma_mode = str(params.get("sigma_mode", "estimate")).strip().lower()
     min_pairs = int(params["min_pairs"])
     inconclusive = str(params["inconclusive"])
+    fixed_sigma = params.get("sigma")
 
     if len(deltas) < min_pairs:
+        sigma_for_payload = None
+        if sigma_mode == "fixed" and fixed_sigma is not None:
+            sigma_for_payload = round(float(fixed_sigma), 8)
         return {
             "decision": "inconclusive",
             "decision_passed": inconclusive == "pass",
@@ -325,11 +344,20 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
             "alpha": alpha,
             "beta": beta,
             "effect_size": effect_size,
-            "sigma": None,
+            "sigma_mode": sigma_mode,
+            "sigma": sigma_for_payload,
             "llr": 0.0,
         }
 
-    sigma = max(_sample_std(deltas), sigma_floor)
+    if sigma_mode == "fixed":
+        if fixed_sigma is None:
+            raise ValueError("sprt sigma is required when sigma_mode=fixed")
+        sigma = float(fixed_sigma)
+    else:
+        sigma = max(_sample_std(deltas), sigma_floor)
+    if sigma <= 0.0:
+        raise ValueError("sprt sigma must be > 0")
+
     sigma_sq = sigma * sigma
     mu0 = -effect_size
     mu1 = 0.0
@@ -368,6 +396,7 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
         "alpha": alpha,
         "beta": beta,
         "effect_size": effect_size,
+        "sigma_mode": sigma_mode,
         "sigma": round(float(sigma), 8),
         "llr": round(float(llr), 8),
         "upper_threshold": round(float(upper), 8),

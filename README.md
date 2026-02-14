@@ -183,7 +183,9 @@ Gate parameters:
 
 - `alpha`, `beta`: false-alarm / miss bounds for SPRT
 - `effect_size`: minimum practical regression to detect
-- `sigma_floor`: numerical stability floor for variance
+- `sigma_mode`: `estimate` (sample std) or `fixed` (use provided `sigma`)
+- `sigma`: required when `sigma_mode: fixed`
+- `sigma_floor`: numerical stability floor for `sigma_mode: estimate`
 - `min_pairs`: minimum paired samples before a decision
 - `inconclusive`: `fail` or `pass`
 - `require_baseline`: default `true`; if enabled and baseline is missing, gate fails
@@ -193,6 +195,8 @@ Gate parameters:
 Operational recommendation:
 
 - Use `pairing_mode: sample_id` and keep `require_baseline: true` in production.
+- Prefer `sigma_mode: fixed` in production for reproducible alpha/beta behavior.
+- Calibrate `sigma` and `min_pairs` so expected no-regression runs do not stay inconclusive.
 - Use `baseline_missing: skip` only for one-time baseline bootstrap.
 
 ## Distributed Mode

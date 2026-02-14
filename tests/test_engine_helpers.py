@@ -244,6 +244,58 @@ def test_run_sprt_detects_regression() -> None:
     assert payload["decision_passed"] is False
 
 
+def test_read_sprt_params_fixed_sigma_mode_requires_sigma() -> None:
+    with pytest.raises(ValueError, match="sigma must be provided"):
+        _read_sprt_params(
+            {
+                "alpha": 0.05,
+                "beta": 0.1,
+                "effect_size": 0.05,
+                "sigma_mode": "fixed",
+            }
+        )
+
+
+def test_run_sprt_fixed_sigma_detects_no_regression() -> None:
+    params = _read_sprt_params(
+        {
+            "alpha": 0.05,
+            "beta": 0.1,
+            "effect_size": 0.05,
+            "sigma_mode": "fixed",
+            "sigma": 0.05,
+            "min_pairs": 6,
+            "inconclusive": "fail",
+        }
+    )
+    deltas = [0.0, 0.01, 0.0, 0.02, -0.005, 0.01, 0.0, 0.01]
+    payload = _run_sprt(deltas=deltas, params=params)
+    assert payload["sigma_mode"] == "fixed"
+    assert payload["sigma"] == pytest.approx(0.05)
+    assert payload["decision"] == "accept_h1_no_regression"
+    assert payload["decision_passed"] is True
+
+
+def test_run_sprt_fixed_sigma_detects_regression() -> None:
+    params = _read_sprt_params(
+        {
+            "alpha": 0.05,
+            "beta": 0.1,
+            "effect_size": 0.05,
+            "sigma_mode": "fixed",
+            "sigma": 0.05,
+            "min_pairs": 6,
+            "inconclusive": "fail",
+        }
+    )
+    deltas = [-0.2, -0.18, -0.21, -0.17, -0.16, -0.19, -0.2, -0.18]
+    payload = _run_sprt(deltas=deltas, params=params)
+    assert payload["sigma_mode"] == "fixed"
+    assert payload["sigma"] == pytest.approx(0.05)
+    assert payload["decision"] == "accept_h0_regression"
+    assert payload["decision_passed"] is False
+
+
 def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:
     current = {
         "vbench_temporal": {
