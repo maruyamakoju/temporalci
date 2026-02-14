@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -145,6 +146,134 @@ def _delta_summary(deltas: list[float]) -> dict[str, Any]:
     }
 
 
+def _load_suite_yaml(path: Path) -> dict[str, Any]:
+    import yaml
+
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"suite YAML root must be a mapping: {path}")
+    return payload
+
+
+def _write_suite_yaml(path: Path, payload: dict[str, Any]) -> None:
+    import yaml
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    path.write_text(rendered, encoding="utf-8")
+
+
+def _apply_recommended_params_to_suite(
+    *,
+    suite_path: Path,
+    gate_metric: str,
+    recommended_params: dict[str, Any],
+    apply_out: Path | None,
+    apply_inplace: bool,
+) -> tuple[Path, dict[str, dict[str, Any]]]:
+    payload = _load_suite_yaml(suite_path)
+    gates = payload.get("gates")
+    if not isinstance(gates, list):
+        raise ValueError("suite YAML does not contain a valid top-level 'gates' list")
+
+    target_gate: dict[str, Any] | None = None
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        if str(gate.get("method", "threshold")).strip().lower() != "sprt_regression":
+            continue
+        if str(gate.get("metric", "")) == gate_metric:
+            target_gate = gate
+            break
+    if target_gate is None:
+        raise ValueError(f"target gate not found for metric: {gate_metric}")
+
+    params = target_gate.get("params")
+    if not isinstance(params, dict):
+        params = {}
+        target_gate["params"] = params
+
+    before = {
+        "sigma_mode": params.get("sigma_mode"),
+        "sigma": params.get("sigma"),
+        "min_pairs": params.get("min_pairs"),
+    }
+    params["sigma_mode"] = "fixed"
+    params["sigma"] = float(recommended_params["sigma"])
+    if recommended_params.get("min_pairs") is not None:
+        params["min_pairs"] = int(recommended_params["min_pairs"])
+
+    after = {
+        "sigma_mode": params.get("sigma_mode"),
+        "sigma": params.get("sigma"),
+        "min_pairs": params.get("min_pairs"),
+    }
+
+    if apply_inplace:
+        backup_path = suite_path.with_suffix(suite_path.suffix + ".bak")
+        shutil.copyfile(suite_path, backup_path)
+        output_path = suite_path
+    else:
+        if apply_out is None:
+            raise ValueError("apply_out must be set when apply_inplace is false")
+        output_path = apply_out
+
+    _write_suite_yaml(output_path, payload)
+    return output_path, {"before": before, "after": after}
+
+
+def _count_mismatch_runs(
+    *,
+    run_summaries: list[dict[str, Any]],
+    min_paired_ratio: float,
+) -> int:
+    return sum(
+        1
+        for row in run_summaries
+        if float(row.get("paired_ratio") or 0.0) < float(min_paired_ratio)
+    )
+
+
+def _evaluate_checks(
+    *,
+    summary: dict[str, Any],
+    fail_if_no_deltas: bool,
+    min_total_deltas: int | None,
+    max_mismatch_runs: int | None,
+    max_recommended_sigma: float | None,
+    min_recommended_sigma: float | None,
+) -> list[str]:
+    failures: list[str] = []
+    delta_count = int(summary.get("delta_summary", {}).get("count") or 0)
+    recommended_sigma = float(summary.get("recommended_params", {}).get("sigma") or 0.0)
+    run_summaries = summary.get("run_summaries", [])
+    run_rows = run_summaries if isinstance(run_summaries, list) else []
+    min_paired_ratio = float(summary.get("sprt_params", {}).get("min_paired_ratio") or 1.0)
+    mismatch_runs = _count_mismatch_runs(run_summaries=run_rows, min_paired_ratio=min_paired_ratio)
+
+    if fail_if_no_deltas and delta_count == 0:
+        failures.append("delta_count is 0 but --fail-if-no-deltas is set")
+    if min_total_deltas is not None and delta_count < int(min_total_deltas):
+        failures.append(
+            f"delta_count={delta_count} is below --min-total-deltas={int(min_total_deltas)}"
+        )
+    if max_mismatch_runs is not None and mismatch_runs > int(max_mismatch_runs):
+        failures.append(
+            f"mismatch_runs={mismatch_runs} exceeds --max-mismatch-runs={int(max_mismatch_runs)}"
+        )
+    if max_recommended_sigma is not None and recommended_sigma > float(max_recommended_sigma):
+        failures.append(
+            f"recommended_sigma={recommended_sigma} exceeds "
+            f"--max-recommended-sigma={float(max_recommended_sigma)}"
+        )
+    if min_recommended_sigma is not None and recommended_sigma < float(min_recommended_sigma):
+        failures.append(
+            f"recommended_sigma={recommended_sigma} is below "
+            f"--min-recommended-sigma={float(min_recommended_sigma)}"
+        )
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Calibrate SPRT fixed-sigma settings from repeated no-change runs."
@@ -164,13 +293,69 @@ def main() -> int:
         help="Existing baseline run_id (if omitted, baseline run is created first)",
     )
     parser.add_argument("--output-json", default="sprt_calibration.json")
+    parser.add_argument(
+        "--apply-out",
+        default=None,
+        help="Write calibrated suite to a new YAML path (safe default)",
+    )
+    parser.add_argument(
+        "--apply-inplace",
+        action="store_true",
+        help="Apply calibrated params to --suite in place (creates .bak)",
+    )
+    parser.add_argument("--check", action="store_true", help="Enable calibration checks")
+    parser.add_argument(
+        "--fail-if-no-deltas",
+        action="store_true",
+        help="Fail checks when no paired deltas are collected",
+    )
+    parser.add_argument(
+        "--min-total-deltas",
+        type=int,
+        default=None,
+        help="Fail checks when total paired deltas are below this threshold",
+    )
+    parser.add_argument(
+        "--max-mismatch-runs",
+        type=int,
+        default=None,
+        help="Fail checks when mismatch run count exceeds this threshold",
+    )
+    parser.add_argument(
+        "--max-recommended-sigma",
+        type=float,
+        default=None,
+        help="Fail checks when recommended sigma exceeds this value",
+    )
+    parser.add_argument(
+        "--min-recommended-sigma",
+        type=float,
+        default=None,
+        help="Fail checks when recommended sigma is below this value",
+    )
     args = parser.parse_args()
 
     if args.runs <= 0:
         print("--runs must be > 0")
         return 1
+    if args.min_total_deltas is not None and args.min_total_deltas < 0:
+        print("--min-total-deltas must be >= 0")
+        return 1
+    if args.max_mismatch_runs is not None and args.max_mismatch_runs < 0:
+        print("--max-mismatch-runs must be >= 0")
+        return 1
+    if args.max_recommended_sigma is not None and args.max_recommended_sigma <= 0:
+        print("--max-recommended-sigma must be > 0")
+        return 1
+    if args.min_recommended_sigma is not None and args.min_recommended_sigma <= 0:
+        print("--min-recommended-sigma must be > 0")
+        return 1
+    if args.apply_inplace and args.apply_out:
+        print("--apply-inplace and --apply-out are mutually exclusive")
+        return 1
 
-    suite = load_suite(Path(args.suite))
+    suite_path = Path(args.suite).resolve()
+    suite = load_suite(suite_path)
     model = select_model(suite, args.model)
     sprt_gate = _resolve_sprt_gate(suite, args.gate_metric)
     sprt_params = _read_sprt_params(sprt_gate.params)
@@ -264,11 +449,10 @@ def main() -> int:
             int(math.ceil(required_pairs["required_pairs_upper"])),
         )
 
-    mismatched_runs = [
-        row
-        for row in run_summaries
-        if float(row.get("paired_ratio") or 0.0) < float(sprt_params["min_paired_ratio"])
-    ]
+    mismatch_runs = _count_mismatch_runs(
+        run_summaries=run_summaries,
+        min_paired_ratio=float(sprt_params["min_paired_ratio"]),
+    )
     notes: list[str] = []
     if not all_deltas:
         notes.append("No paired deltas collected. Check pairing_mode and sample_id coverage.")
@@ -277,9 +461,9 @@ def main() -> int:
             "Observed deltas were zero-variance across calibration runs. "
             "Recommended sigma may be optimistic unless suite includes realistic noise."
         )
-    if mismatched_runs:
+    if mismatch_runs:
         notes.append(
-            f"{len(mismatched_runs)} / {len(run_summaries)} runs were below min_paired_ratio="
+            f"{mismatch_runs} / {len(run_summaries)} runs were below min_paired_ratio="
             f"{sprt_params['min_paired_ratio']}."
         )
     if required_min_pairs is not None:
@@ -330,8 +514,70 @@ def main() -> int:
             "beta": sprt_params["beta"],
         },
         "run_summaries": run_summaries,
+        "mismatch_runs": mismatch_runs,
         "notes": notes,
     }
+
+    check_enabled = bool(
+        args.check
+        or args.fail_if_no_deltas
+        or args.min_total_deltas is not None
+        or args.max_mismatch_runs is not None
+        or args.max_recommended_sigma is not None
+        or args.min_recommended_sigma is not None
+    )
+    check_failures: list[str] = []
+    if check_enabled:
+        check_failures = _evaluate_checks(
+            summary=summary,
+            fail_if_no_deltas=bool(args.fail_if_no_deltas),
+            min_total_deltas=args.min_total_deltas,
+            max_mismatch_runs=args.max_mismatch_runs,
+            max_recommended_sigma=args.max_recommended_sigma,
+            min_recommended_sigma=args.min_recommended_sigma,
+        )
+        summary["check"] = {
+            "enabled": True,
+            "passed": len(check_failures) == 0,
+            "failures": check_failures,
+            "thresholds": {
+                "fail_if_no_deltas": bool(args.fail_if_no_deltas),
+                "min_total_deltas": args.min_total_deltas,
+                "max_mismatch_runs": args.max_mismatch_runs,
+                "max_recommended_sigma": args.max_recommended_sigma,
+                "min_recommended_sigma": args.min_recommended_sigma,
+            },
+        }
+
+    apply_requested = bool(args.apply_inplace or args.apply_out)
+    apply_result: dict[str, Any] | None = None
+    if apply_requested and not check_failures:
+        apply_out = Path(args.apply_out).resolve() if args.apply_out else None
+        applied_path, apply_diff = _apply_recommended_params_to_suite(
+            suite_path=suite_path,
+            gate_metric=sprt_gate.metric,
+            recommended_params=summary["recommended_params"],
+            apply_out=apply_out,
+            apply_inplace=bool(args.apply_inplace),
+        )
+        apply_result = {
+            "applied": True,
+            "mode": "inplace" if args.apply_inplace else "output",
+            "path": str(applied_path),
+            "changes": apply_diff,
+        }
+        summary["apply"] = apply_result
+        print(
+            "applied_calibration "
+            f"path={applied_path} "
+            f"before={apply_diff['before']} "
+            f"after={apply_diff['after']}"
+        )
+    elif apply_requested:
+        summary["apply"] = {
+            "applied": False,
+            "reason": "check_failed",
+        }
 
     atomic_write_json(output_json, summary)
     print(f"wrote_calibration {output_json}")
@@ -340,6 +586,10 @@ def main() -> int:
         f"sigma={summary['recommended_params']['sigma']} "
         f"min_pairs={summary['recommended_params']['min_pairs']}"
     )
+    if check_failures:
+        for failure in check_failures:
+            print(f"check_failed: {failure}")
+        return 2
     return 0
 
 

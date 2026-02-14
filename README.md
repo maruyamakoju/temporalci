@@ -223,6 +223,31 @@ python scripts/calibrate_sprt.py \
 This writes `sprt_calibration.json` with recommended `sigma`, estimated required
 pair counts, and per-run pairing quality diagnostics.
 
+Apply calibrated params to a new suite file (safe default):
+
+```bash
+python scripts/calibrate_sprt.py \
+  --suite examples/regression_sprt.yaml \
+  --runs 8 \
+  --artifacts-dir artifacts/sprt-calibration \
+  --apply-out examples/regression_sprt.calibrated.yaml
+```
+
+Run CI-style checks and fail with exit code `2` when calibration quality is insufficient:
+
+```bash
+python scripts/calibrate_sprt.py \
+  --suite examples/regression_sprt.yaml \
+  --runs 8 \
+  --artifacts-dir artifacts/sprt-calibration \
+  --check \
+  --fail-if-no-deltas \
+  --min-total-deltas 50 \
+  --max-mismatch-runs 0
+```
+
+`--apply-inplace` is available for direct updates and creates a `.bak` backup.
+
 ## Distributed Mode
 
 Start coordinator:

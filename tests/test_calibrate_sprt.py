@@ -148,3 +148,117 @@ def test_calibrate_main_writes_summary_json(tmp_path: Path, monkeypatch: Any) ->
     assert payload["required_pairs"] is not None
     assert payload["recommended_params"]["sigma_mode"] == "fixed"
     assert payload["recommended_params"]["min_pairs"] >= 4
+
+
+def test_calibrate_main_apply_out_writes_calibrated_suite(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    suite_path = _write_suite(tmp_path)
+    apply_out = tmp_path / "suite_calibrated.yaml"
+
+    calls = {"run_suite": 0}
+
+    def _fake_run_suite(**_: Any) -> dict[str, Any]:
+        calls["run_suite"] += 1
+        return {
+            "run_id": f"run-{calls['run_suite']}",
+            "status": "PASS",
+            "metrics": {"vbench_temporal": {"score": 0.5, "per_sample": []}},
+        }
+
+    def _fake_pairing(**_: Any) -> tuple[list[float], dict[str, Any]]:
+        return [0.02, -0.01], {"paired_count": 2, "expected_pairs": 2, "paired_ratio": 1.0}
+
+    monkeypatch.setattr("scripts.calibrate_sprt.run_suite", _fake_run_suite)
+    monkeypatch.setattr("scripts.calibrate_sprt._paired_deltas_for_gate", _fake_pairing)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "calibrate_sprt.py",
+            "--suite",
+            str(suite_path),
+            "--runs",
+            "1",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--output-json",
+            "calibration.json",
+            "--apply-out",
+            str(apply_out),
+        ],
+    )
+    code = calibrate_main()
+    assert code == 0
+    assert apply_out.exists()
+
+    original = yaml.safe_load(suite_path.read_text(encoding="utf-8"))
+    calibrated = yaml.safe_load(apply_out.read_text(encoding="utf-8"))
+    original_params = original["gates"][0]["params"]
+    calibrated_params = calibrated["gates"][0]["params"]
+    assert "sigma_mode" not in original_params
+    assert "sigma" not in original_params
+    assert calibrated_params["sigma_mode"] == "fixed"
+    assert isinstance(calibrated_params["sigma"], float)
+    assert calibrated_params["min_pairs"] >= int(original_params["min_pairs"])
+    assert calibrated_params["min_paired_ratio"] == original_params["min_paired_ratio"]
+    assert calibrated_params["pairing_mismatch"] == original_params["pairing_mismatch"]
+
+    payload = json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8"))
+    assert payload["apply"]["applied"] is True
+    assert payload["apply"]["mode"] == "output"
+
+
+def test_calibrate_main_check_failure_returns_nonzero_and_skips_apply(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    suite_path = _write_suite(tmp_path)
+    apply_out = tmp_path / "suite_calibrated.yaml"
+
+    calls = {"run_suite": 0}
+
+    def _fake_run_suite(**_: Any) -> dict[str, Any]:
+        calls["run_suite"] += 1
+        return {
+            "run_id": f"run-{calls['run_suite']}",
+            "status": "PASS",
+            "metrics": {"vbench_temporal": {"score": 0.5, "per_sample": []}},
+        }
+
+    def _fake_pairing(**_: Any) -> tuple[list[float], dict[str, Any]]:
+        return [], {"paired_count": 0, "expected_pairs": 2, "paired_ratio": 0.0}
+
+    monkeypatch.setattr("scripts.calibrate_sprt.run_suite", _fake_run_suite)
+    monkeypatch.setattr("scripts.calibrate_sprt._paired_deltas_for_gate", _fake_pairing)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "calibrate_sprt.py",
+            "--suite",
+            str(suite_path),
+            "--runs",
+            "1",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--output-json",
+            "calibration.json",
+            "--check",
+            "--fail-if-no-deltas",
+            "--max-mismatch-runs",
+            "0",
+            "--apply-out",
+            str(apply_out),
+        ],
+    )
+    code = calibrate_main()
+    assert code == 2
+    assert not apply_out.exists()
+
+    payload = json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8"))
+    assert payload["check"]["enabled"] is True
+    assert payload["check"]["passed"] is False
+    assert payload["apply"]["applied"] is False
+    assert payload["apply"]["reason"] == "check_failed"
