@@ -333,6 +333,13 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                     raise ConfigError(
                         f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]"
                     )
+            if "pairing_mismatch" in params:
+                pairing_mismatch = str(params["pairing_mismatch"]).strip().lower()
+                if pairing_mismatch not in {"fail", "pass", "skip"}:
+                    raise ConfigError(
+                        f"'gates[{i}].params.pairing_mismatch' must be one of: "
+                        "fail, pass, skip"
+                    )
             sigma_mode = "estimate"
             if "sigma_mode" in params:
                 sigma_mode = str(params["sigma_mode"]).strip().lower()

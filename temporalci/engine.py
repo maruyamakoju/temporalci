@@ -193,7 +193,7 @@ def _paired_deltas_for_gate(
         require_sample_id=require_sample_id,
         allow_legacy_pairing=allow_legacy_pairing,
     )
-    expected_pairs = min(len(current_rows), len(baseline_rows))
+    expected_pairs = max(len(current_rows), len(baseline_rows))
     base_summary = {
         "current_series_count": len(current_rows),
         "baseline_series_count": len(baseline_rows),
@@ -291,6 +291,7 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
     sigma_value_raw = raw.get("sigma")
     min_pairs = max(2, int(raw.get("min_pairs", 6)))
     min_paired_ratio = float(raw.get("min_paired_ratio", 1.0))
+    pairing_mismatch = str(raw.get("pairing_mismatch", "fail")).strip().lower()
     inconclusive = str(raw.get("inconclusive", "fail")).strip().lower()
     require_baseline = as_bool(raw.get("require_baseline", True), default=True)
     baseline_missing = str(raw.get("baseline_missing", "fail")).strip().lower()
@@ -309,6 +310,8 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("sprt sigma_mode must be one of: estimate, fixed")
     if not (0.0 < min_paired_ratio <= 1.0):
         raise ValueError("sprt min_paired_ratio must be in (0, 1]")
+    if pairing_mismatch not in {"fail", "pass", "skip"}:
+        raise ValueError("sprt pairing_mismatch must be one of: fail, pass, skip")
     if inconclusive not in {"fail", "pass"}:
         raise ValueError("sprt inconclusive must be one of: fail, pass")
     if baseline_missing not in {"fail", "pass", "skip"}:
@@ -333,6 +336,7 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         "sigma": sigma,
         "min_pairs": min_pairs,
         "min_paired_ratio": min_paired_ratio,
+        "pairing_mismatch": pairing_mismatch,
         "inconclusive": inconclusive,
         "require_baseline": require_baseline,
         "baseline_missing": baseline_missing,
@@ -499,19 +503,22 @@ def _evaluate_gates(
                 ),
             )
             min_paired_ratio = float(params["min_paired_ratio"])
+            pairing_mismatch = str(params["pairing_mismatch"])
             paired_ratio = float(pairing_summary.get("paired_ratio", 0.0))
             if paired_ratio < min_paired_ratio:
+                decision_passed = pairing_mismatch in {"pass", "skip"}
                 result["sprt"] = {
-                    "decision": "pairing_insufficient",
-                    "decision_passed": False,
+                    "decision": "pairing_mismatch",
+                    "decision_passed": decision_passed,
                     "reason": "paired_ratio_below_min",
+                    "pairing_mismatch_policy": pairing_mismatch,
                     "paired_count": int(pairing_summary.get("paired_count", 0)),
                     "expected_pairs": int(pairing_summary.get("expected_pairs", 0)),
                     "paired_ratio": round(paired_ratio, 6),
                     "min_paired_ratio": round(min_paired_ratio, 6),
                     "pairing": pairing_summary,
                 }
-                result["passed"] = False
+                result["passed"] = threshold_passed and decision_passed
                 results.append(result)
                 continue
             sprt_payload = _run_sprt(deltas=deltas, params=params)

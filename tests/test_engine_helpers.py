@@ -258,6 +258,32 @@ def test_read_sprt_params_rejects_invalid_min_paired_ratio() -> None:
         )
 
 
+def test_read_sprt_params_rejects_invalid_pairing_mismatch_policy() -> None:
+    with pytest.raises(ValueError, match="pairing_mismatch"):
+        _read_sprt_params(
+            {
+                "alpha": 0.05,
+                "beta": 0.1,
+                "effect_size": 0.05,
+                "pairing_mismatch": "unknown",
+            }
+        )
+
+
+def test_read_sprt_params_parses_pairing_mismatch_policy() -> None:
+    params = _read_sprt_params(
+        {
+            "alpha": 0.05,
+            "beta": 0.1,
+            "effect_size": 0.05,
+            "pairing_mismatch": "skip",
+            "min_paired_ratio": 0.95,
+        }
+    )
+    assert params["pairing_mismatch"] == "skip"
+    assert params["min_paired_ratio"] == pytest.approx(0.95)
+
+
 def test_read_sprt_params_fixed_sigma_mode_requires_sigma() -> None:
     with pytest.raises(ValueError, match="sigma must be provided"):
         _read_sprt_params(
@@ -342,9 +368,98 @@ def test_evaluate_gates_sprt_fails_when_paired_ratio_below_min() -> None:
     ]
     results = _evaluate_gates(gates, current, baseline_metrics=baseline)
     sprt = results[0]["sprt"]
-    assert sprt["decision"] == "pairing_insufficient"
+    assert sprt["decision"] == "pairing_mismatch"
     assert sprt["reason"] == "paired_ratio_below_min"
+    assert sprt["pairing_mismatch_policy"] == "fail"
     assert sprt["paired_ratio"] == pytest.approx(0.5)
+    assert results[0]["passed"] is False
+
+
+def test_evaluate_gates_sprt_pairing_mismatch_can_pass_with_policy_pass() -> None:
+    current = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.5}},
+                {"sample_id": "s2", "dims": {"motion_smoothness": 0.55}},
+            ],
+        }
+    }
+    baseline = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.52}},
+                {"sample_id": "s3", "dims": {"motion_smoothness": 0.56}},
+            ],
+        }
+    }
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.3,
+            method="sprt_regression",
+            params={
+                "min_paired_ratio": 1.0,
+                "pairing_mismatch": "pass",
+                "effect_size": 0.03,
+                "min_pairs": 2,
+            },
+        )
+    ]
+    results = _evaluate_gates(gates, current, baseline_metrics=baseline)
+    sprt = results[0]["sprt"]
+    assert sprt["decision"] == "pairing_mismatch"
+    assert sprt["pairing_mismatch_policy"] == "pass"
+    assert sprt["decision_passed"] is True
+    assert results[0]["passed"] is True
+
+
+def test_evaluate_gates_sprt_paired_ratio_uses_max_series_count() -> None:
+    current = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.5}},
+                {"sample_id": "s2", "dims": {"motion_smoothness": 0.55}},
+                {"sample_id": "s3", "dims": {"motion_smoothness": 0.51}},
+            ],
+        }
+    }
+    baseline = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.52}},
+                {"sample_id": "s2", "dims": {"motion_smoothness": 0.56}},
+            ],
+        }
+    }
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.3,
+            method="sprt_regression",
+            params={
+                "min_paired_ratio": 0.8,
+                "pairing_mismatch": "fail",
+                "effect_size": 0.03,
+                "min_pairs": 2,
+            },
+        )
+    ]
+    results = _evaluate_gates(gates, current, baseline_metrics=baseline)
+    sprt = results[0]["sprt"]
+    assert sprt["expected_pairs"] == 3
+    assert sprt["paired_count"] == 2
+    assert sprt["paired_ratio"] == pytest.approx(2 / 3, abs=1e-6)
+    assert sprt["decision"] == "pairing_mismatch"
     assert results[0]["passed"] is False
 
 

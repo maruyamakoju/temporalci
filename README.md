@@ -188,6 +188,12 @@ Gate parameters:
 - `sigma_floor`: numerical stability floor for `sigma_mode: estimate`
 - `min_pairs`: minimum paired samples before a decision
 - `min_paired_ratio`: minimum `paired_count / expected_pairs` required before SPRT can run
+- `pairing_mismatch`: `fail | pass | skip` policy when `paired_ratio < min_paired_ratio`
+
+Pairing ratio is computed as:
+
+- `expected_pairs = max(current_series_count, baseline_series_count)`
+- `paired_ratio = paired_count / expected_pairs`
 - `inconclusive`: `fail` or `pass`
 - `require_baseline`: default `true`; if enabled and baseline is missing, gate fails
 - `baseline_missing`: `fail | pass | skip` policy for missing baseline handling
@@ -197,6 +203,7 @@ Operational recommendation:
 
 - Use `pairing_mode: sample_id` and keep `require_baseline: true` in production.
 - Keep `min_paired_ratio` high (for example `0.95` to `1.0`) to fail on pairing drift.
+- Keep `pairing_mismatch: fail` in production.
 - Prefer `sigma_mode: fixed` in production for reproducible alpha/beta behavior.
 - Calibrate `sigma` and `min_pairs` so expected no-regression runs do not stay inconclusive.
 - Use `baseline_missing: skip` only for one-time baseline bootstrap.

@@ -116,6 +116,7 @@ def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
             "sprt": {
                 "decision": "accept_h1_no_regression",
                 "decision_passed": True,
+                "pairing_mismatch_policy": "fail",
                 "sigma_mode": "fixed",
                 "sigma": 0.04,
                 "llr": 3.2,
@@ -126,6 +127,9 @@ def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
                 "pairing": {
                     "paired_count": 12,
                     "paired_ratio": 1.0,
+                    "expected_pairs": 12,
+                    "current_series_count": 12,
+                    "baseline_series_count": 12,
                     "worst_deltas": [
                         {
                             "pair_key": "sid:s1",
@@ -143,5 +147,7 @@ def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
     content = path.read_text(encoding="utf-8")
     assert "SPRT Analysis" in content
     assert "accept_h1_no_regression" in content
+    assert "pairing_mismatch_policy" in content
+    assert "pairing.current_series_count" in content
     assert "worst_deltas" in content
     assert "paired_ratio" in content

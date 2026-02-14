@@ -54,6 +54,7 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
         details: dict[str, Any] = {}
         for key in (
             "reason",
+            "pairing_mismatch_policy",
             "baseline_missing_policy",
             "require_baseline",
             "inconclusive_policy",
@@ -69,6 +70,16 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
             details[key] = value
         if isinstance(worst_deltas, list) and worst_deltas:
             details["worst_deltas"] = worst_deltas
+        for key in (
+            "pairing",
+            "expected_pairs",
+            "current_series_count",
+            "baseline_series_count",
+            "current_missing_sample_id_count",
+            "baseline_missing_sample_id_count",
+        ):
+            if key in pairing_dict:
+                details[f"pairing.{key}"] = pairing_dict[key]
 
         status = "PASS" if sprt.get("decision_passed") else "FAIL"
         rows.append(

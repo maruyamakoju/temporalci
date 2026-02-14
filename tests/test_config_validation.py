@@ -256,3 +256,33 @@ def test_gate_sprt_allows_valid_min_paired_ratio(tmp_path: Path) -> None:
     ]
     suite = load_suite(_write_yaml(tmp_path, payload))
     assert suite.gates[0].params["min_paired_ratio"] == 0.95
+
+
+def test_gate_sprt_rejects_invalid_pairing_mismatch_policy(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"pairing_mismatch": "unknown"},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_allows_valid_pairing_mismatch_policy(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"pairing_mismatch": "skip"},
+        }
+    ]
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.gates[0].params["pairing_mismatch"] == "skip"

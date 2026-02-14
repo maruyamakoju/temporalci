@@ -38,6 +38,7 @@ gates:
       sigma: 0.04
       min_pairs: 6
       min_paired_ratio: 1.0
+      pairing_mismatch: "fail"
       inconclusive: "fail"
       require_baseline: false
       baseline_missing: "skip"

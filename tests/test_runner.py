@@ -340,6 +340,7 @@ def test_sprt_gate_fails_when_pairing_ratio_below_minimum(tmp_path: Path) -> Non
                     "sigma": 0.04,
                     "min_pairs": 2,
                     "min_paired_ratio": 0.9,
+                    "pairing_mismatch": "fail",
                     "inconclusive": "fail",
                     "require_baseline": False,
                     "baseline_missing": "skip",
@@ -382,6 +383,7 @@ def test_sprt_gate_fails_when_pairing_ratio_below_minimum(tmp_path: Path) -> Non
     )
     assert candidate_result["status"] == "FAIL"
     sprt = candidate_result["gates"][0]["sprt"]
-    assert sprt["decision"] == "pairing_insufficient"
+    assert sprt["decision"] == "pairing_mismatch"
     assert sprt["reason"] == "paired_ratio_below_min"
+    assert sprt["pairing_mismatch_policy"] == "fail"
     assert sprt["paired_ratio"] < 0.9
