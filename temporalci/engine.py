@@ -213,22 +213,35 @@ def _paired_deltas_for_gate(
 
     baseline_by_key = {key: value for key, value in baseline_rows}
     deltas: list[float] = []
+    matched_rows: list[dict[str, Any]] = []
     key_paired = 0
     for key, current_value in current_rows:
         baseline_value = baseline_by_key.get(key)
         if baseline_value is None:
             continue
-        if op in DIRECTION_HIGHER_IS_BETTER:
-            deltas.append(float(current_value) - float(baseline_value))
-        else:
-            deltas.append(float(baseline_value) - float(current_value))
+        delta = (
+            float(current_value) - float(baseline_value)
+            if op in DIRECTION_HIGHER_IS_BETTER
+            else float(baseline_value) - float(current_value)
+        )
+        deltas.append(delta)
+        matched_rows.append(
+            {
+                "pair_key": key,
+                "current": round(float(current_value), 6),
+                "baseline": round(float(baseline_value), 6),
+                "delta": round(float(delta), 6),
+            }
+        )
         key_paired += 1
 
     if deltas:
+        worst_rows = sorted(matched_rows, key=lambda item: float(item["delta"]))[:5]
         return deltas, {
             "pairing": "key_match",
             "paired_count": key_paired,
             "paired_ratio": round(float(key_paired) / max(1, expected_pairs), 6),
+            "worst_deltas": worst_rows,
             **base_summary,
         }
 
@@ -245,14 +258,26 @@ def _paired_deltas_for_gate(
     for idx in range(paired_count):
         current_value = current_rows[idx][1]
         baseline_value = baseline_rows[idx][1]
-        if op in DIRECTION_HIGHER_IS_BETTER:
-            deltas.append(float(current_value) - float(baseline_value))
-        else:
-            deltas.append(float(baseline_value) - float(current_value))
+        delta = (
+            float(current_value) - float(baseline_value)
+            if op in DIRECTION_HIGHER_IS_BETTER
+            else float(baseline_value) - float(current_value)
+        )
+        deltas.append(delta)
+        matched_rows.append(
+            {
+                "pair_key": f"idx:{idx}",
+                "current": round(float(current_value), 6),
+                "baseline": round(float(baseline_value), 6),
+                "delta": round(float(delta), 6),
+            }
+        )
+    worst_rows = sorted(matched_rows, key=lambda item: float(item["delta"]))[:5]
     return deltas, {
         "pairing": "index_fallback",
         "paired_count": paired_count,
         "paired_ratio": round(float(paired_count) / max(1, expected_pairs), 6),
+        "worst_deltas": worst_rows,
         **base_summary,
     }
 
@@ -265,6 +290,7 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
     sigma_mode = str(raw.get("sigma_mode", "estimate")).strip().lower()
     sigma_value_raw = raw.get("sigma")
     min_pairs = max(2, int(raw.get("min_pairs", 6)))
+    min_paired_ratio = float(raw.get("min_paired_ratio", 1.0))
     inconclusive = str(raw.get("inconclusive", "fail")).strip().lower()
     require_baseline = as_bool(raw.get("require_baseline", True), default=True)
     baseline_missing = str(raw.get("baseline_missing", "fail")).strip().lower()
@@ -281,6 +307,8 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("sprt sigma_floor must be > 0")
     if sigma_mode not in {"estimate", "fixed"}:
         raise ValueError("sprt sigma_mode must be one of: estimate, fixed")
+    if not (0.0 < min_paired_ratio <= 1.0):
+        raise ValueError("sprt min_paired_ratio must be in (0, 1]")
     if inconclusive not in {"fail", "pass"}:
         raise ValueError("sprt inconclusive must be one of: fail, pass")
     if baseline_missing not in {"fail", "pass", "skip"}:
@@ -304,6 +332,7 @@ def _read_sprt_params(raw: dict[str, Any]) -> dict[str, Any]:
         "sigma_mode": sigma_mode,
         "sigma": sigma,
         "min_pairs": min_pairs,
+        "min_paired_ratio": min_paired_ratio,
         "inconclusive": inconclusive,
         "require_baseline": require_baseline,
         "baseline_missing": baseline_missing,
@@ -327,6 +356,7 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
     sigma_floor = float(params["sigma_floor"])
     sigma_mode = str(params.get("sigma_mode", "estimate")).strip().lower()
     min_pairs = int(params["min_pairs"])
+    min_paired_ratio = float(params.get("min_paired_ratio", 1.0))
     inconclusive = str(params["inconclusive"])
     fixed_sigma = params.get("sigma")
 
@@ -341,6 +371,7 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
             "reason": "insufficient_pairs",
             "paired_count": len(deltas),
             "min_pairs": min_pairs,
+            "min_paired_ratio": round(float(min_paired_ratio), 6),
             "alpha": alpha,
             "beta": beta,
             "effect_size": effect_size,
@@ -393,6 +424,7 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
         "inconclusive_policy": inconclusive,
         "paired_count": len(deltas),
         "min_pairs": min_pairs,
+        "min_paired_ratio": round(float(min_paired_ratio), 6),
         "alpha": alpha,
         "beta": beta,
         "effect_size": effect_size,
@@ -466,6 +498,22 @@ def _evaluate_gates(
                     pairing_mode == "legacy" or bool(params["allow_index_fallback"])
                 ),
             )
+            min_paired_ratio = float(params["min_paired_ratio"])
+            paired_ratio = float(pairing_summary.get("paired_ratio", 0.0))
+            if paired_ratio < min_paired_ratio:
+                result["sprt"] = {
+                    "decision": "pairing_insufficient",
+                    "decision_passed": False,
+                    "reason": "paired_ratio_below_min",
+                    "paired_count": int(pairing_summary.get("paired_count", 0)),
+                    "expected_pairs": int(pairing_summary.get("expected_pairs", 0)),
+                    "paired_ratio": round(paired_ratio, 6),
+                    "min_paired_ratio": round(min_paired_ratio, 6),
+                    "pairing": pairing_summary,
+                }
+                result["passed"] = False
+                results.append(result)
+                continue
             sprt_payload = _run_sprt(deltas=deltas, params=params)
             sprt_payload["pairing"] = pairing_summary
             result["sprt"] = sprt_payload

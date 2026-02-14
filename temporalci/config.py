@@ -322,6 +322,17 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                 raise ConfigError(
                     f"'gates[{i}].op' must be one of >=, >, <=, < for method=sprt_regression"
                 )
+            if "min_paired_ratio" in params:
+                try:
+                    min_paired_ratio = float(params["min_paired_ratio"])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]"
+                    ) from exc
+                if not (0.0 < min_paired_ratio <= 1.0):
+                    raise ConfigError(
+                        f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]"
+                    )
             sigma_mode = "estimate"
             if "sigma_mode" in params:
                 sigma_mode = str(params["sigma_mode"]).strip().lower()

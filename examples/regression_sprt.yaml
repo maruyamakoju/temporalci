@@ -37,6 +37,7 @@ gates:
       sigma_mode: "fixed"
       sigma: 0.04
       min_pairs: 6
+      min_paired_ratio: 1.0
       inconclusive: "fail"
       require_baseline: false
       baseline_missing: "skip"

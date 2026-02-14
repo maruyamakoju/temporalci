@@ -226,3 +226,33 @@ def test_gate_sprt_allows_fixed_sigma_mode_with_positive_sigma(tmp_path: Path) -
     suite = load_suite(_write_yaml(tmp_path, payload))
     assert suite.gates[0].params["sigma_mode"] == "fixed"
     assert suite.gates[0].params["sigma"] == 0.05
+
+
+def test_gate_sprt_rejects_invalid_min_paired_ratio(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"min_paired_ratio": 1.1},
+        }
+    ]
+    with pytest.raises(SuiteValidationError):
+        load_suite(_write_yaml(tmp_path, payload))
+
+
+def test_gate_sprt_allows_valid_min_paired_ratio(tmp_path: Path) -> None:
+    payload = _base_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.1,
+            "method": "sprt_regression",
+            "params": {"min_paired_ratio": 0.95},
+        }
+    ]
+    suite = load_suite(_write_yaml(tmp_path, payload))
+    assert suite.gates[0].params["min_paired_ratio"] == 0.95

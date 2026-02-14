@@ -187,6 +187,7 @@ Gate parameters:
 - `sigma`: required when `sigma_mode: fixed`
 - `sigma_floor`: numerical stability floor for `sigma_mode: estimate`
 - `min_pairs`: minimum paired samples before a decision
+- `min_paired_ratio`: minimum `paired_count / expected_pairs` required before SPRT can run
 - `inconclusive`: `fail` or `pass`
 - `require_baseline`: default `true`; if enabled and baseline is missing, gate fails
 - `baseline_missing`: `fail | pass | skip` policy for missing baseline handling
@@ -195,9 +196,13 @@ Gate parameters:
 Operational recommendation:
 
 - Use `pairing_mode: sample_id` and keep `require_baseline: true` in production.
+- Keep `min_paired_ratio` high (for example `0.95` to `1.0`) to fail on pairing drift.
 - Prefer `sigma_mode: fixed` in production for reproducible alpha/beta behavior.
 - Calibrate `sigma` and `min_pairs` so expected no-regression runs do not stay inconclusive.
 - Use `baseline_missing: skip` only for one-time baseline bootstrap.
+
+`report.html` now includes an **SPRT Analysis** section with decision, LLR thresholds,
+pairing ratio, and worst sample deltas for fast root-cause review.
 
 ## Distributed Mode
 

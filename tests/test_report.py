@@ -102,3 +102,46 @@ def test_html_report_creates_parent_dirs(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "deep" / "report.html"
     write_html_report(path, _minimal_payload())
     assert path.exists()
+
+
+def test_html_report_renders_sprt_analysis_details(tmp_path: Path) -> None:
+    payload = _minimal_payload()
+    payload["gates"] = [
+        {
+            "metric": "vbench_temporal.dims.motion_smoothness",
+            "op": ">=",
+            "value": 0.45,
+            "actual": 0.52,
+            "passed": True,
+            "sprt": {
+                "decision": "accept_h1_no_regression",
+                "decision_passed": True,
+                "sigma_mode": "fixed",
+                "sigma": 0.04,
+                "llr": 3.2,
+                "upper_threshold": 2.89,
+                "lower_threshold": -2.25,
+                "crossed_at": 11,
+                "min_paired_ratio": 1.0,
+                "pairing": {
+                    "paired_count": 12,
+                    "paired_ratio": 1.0,
+                    "worst_deltas": [
+                        {
+                            "pair_key": "sid:s1",
+                            "current": 0.5,
+                            "baseline": 0.49,
+                            "delta": 0.01,
+                        }
+                    ],
+                },
+            },
+        }
+    ]
+    path = tmp_path / "report.html"
+    write_html_report(path, payload)
+    content = path.read_text(encoding="utf-8")
+    assert "SPRT Analysis" in content
+    assert "accept_h1_no_regression" in content
+    assert "worst_deltas" in content
+    assert "paired_ratio" in content

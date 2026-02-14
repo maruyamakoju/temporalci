@@ -39,6 +39,57 @@ def _render_gates(gates: list[dict[str, Any]]) -> str:
     return "\n".join(rows)
 
 
+def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
+    rows: list[str] = []
+    for gate in gates:
+        sprt = gate.get("sprt")
+        if not isinstance(sprt, dict):
+            continue
+        pairing = sprt.get("pairing")
+        pairing_dict = pairing if isinstance(pairing, dict) else {}
+        paired_count = pairing_dict.get("paired_count", sprt.get("paired_count", ""))
+        paired_ratio = pairing_dict.get("paired_ratio", sprt.get("paired_ratio", ""))
+        worst_deltas = pairing_dict.get("worst_deltas")
+
+        details: dict[str, Any] = {}
+        for key in (
+            "reason",
+            "baseline_missing_policy",
+            "require_baseline",
+            "inconclusive_policy",
+            "sigma_mode",
+            "sigma",
+            "effect_size",
+            "min_pairs",
+            "min_paired_ratio",
+        ):
+            value = sprt.get(key)
+            if value is None or value == "":
+                continue
+            details[key] = value
+        if isinstance(worst_deltas, list) and worst_deltas:
+            details["worst_deltas"] = worst_deltas
+
+        status = "PASS" if sprt.get("decision_passed") else "FAIL"
+        rows.append(
+            "<tr>"
+            f"<td>{escape(str(gate.get('metric')))}</td>"
+            f"<td>{escape(str(sprt.get('decision', '')))}</td>"
+            f"<td>{escape(status)}</td>"
+            f"<td>{escape(str(paired_count))}</td>"
+            f"<td>{escape(str(paired_ratio))}</td>"
+            f"<td>{escape(str(sprt.get('llr', '')))}</td>"
+            f"<td>{escape(str(sprt.get('upper_threshold', '')))}</td>"
+            f"<td>{escape(str(sprt.get('lower_threshold', '')))}</td>"
+            f"<td>{escape(str(sprt.get('crossed_at', '')))}</td>"
+            f"<td><pre>{escape(str(details))}</pre></td>"
+            "</tr>"
+        )
+    if not rows:
+        return "<tr><td colspan='10'>No SPRT gates.</td></tr>"
+    return "\n".join(rows)
+
+
 def _render_regressions(regressions: list[dict[str, Any]]) -> str:
     if not regressions:
         return "<tr><td colspan='6'>No baseline or no directional gates.</td></tr>"
@@ -129,6 +180,12 @@ def write_html_report(path: Path, payload: dict[str, Any]) -> None:
   <table>
     <thead><tr><th>Metric</th><th>Op</th><th>Target</th><th>Actual</th><th>Status</th><th>Error</th></tr></thead>
     <tbody>{_render_gates(gates_render_input)}</tbody>
+  </table>
+
+  <h2>SPRT Analysis</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Decision</th><th>Status</th><th>Paired</th><th>Paired Ratio</th><th>LLR</th><th>Upper</th><th>Lower</th><th>Crossed At</th><th>Details</th></tr></thead>
+    <tbody>{_render_sprt_gates(gates_render_input)}</tbody>
   </table>
 
   <h2>Regression vs Baseline</h2>

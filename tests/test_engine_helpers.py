@@ -225,6 +225,8 @@ def test_paired_deltas_for_gate_uses_key_matching() -> None:
     assert summary["pairing"] == "key_match"
     assert deltas == pytest.approx([-0.3, -0.2])
     assert summary["paired_ratio"] == 1.0
+    assert len(summary["worst_deltas"]) == 2
+    assert summary["worst_deltas"][0]["delta"] == pytest.approx(-0.3)
 
 
 def test_run_sprt_detects_regression() -> None:
@@ -242,6 +244,18 @@ def test_run_sprt_detects_regression() -> None:
     payload = _run_sprt(deltas=deltas, params=params)
     assert payload["decision"] == "accept_h0_regression"
     assert payload["decision_passed"] is False
+
+
+def test_read_sprt_params_rejects_invalid_min_paired_ratio() -> None:
+    with pytest.raises(ValueError, match="min_paired_ratio"):
+        _read_sprt_params(
+            {
+                "alpha": 0.05,
+                "beta": 0.1,
+                "effect_size": 0.05,
+                "min_paired_ratio": 0.0,
+            }
+        )
 
 
 def test_read_sprt_params_fixed_sigma_mode_requires_sigma() -> None:
@@ -294,6 +308,44 @@ def test_run_sprt_fixed_sigma_detects_regression() -> None:
     assert payload["sigma"] == pytest.approx(0.05)
     assert payload["decision"] == "accept_h0_regression"
     assert payload["decision_passed"] is False
+
+
+def test_evaluate_gates_sprt_fails_when_paired_ratio_below_min() -> None:
+    current = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.5}},
+                {"sample_id": "s2", "dims": {"motion_smoothness": 0.55}},
+            ],
+        }
+    }
+    baseline = {
+        "vbench_temporal": {
+            "score": 0.6,
+            "dims": {"motion_smoothness": 0.5},
+            "per_sample": [
+                {"sample_id": "s1", "dims": {"motion_smoothness": 0.52}},
+                {"sample_id": "s3", "dims": {"motion_smoothness": 0.56}},
+            ],
+        }
+    }
+    gates = [
+        GateSpec(
+            metric="vbench_temporal.dims.motion_smoothness",
+            op=">=",
+            value=0.3,
+            method="sprt_regression",
+            params={"min_paired_ratio": 1.0, "effect_size": 0.03, "min_pairs": 2},
+        )
+    ]
+    results = _evaluate_gates(gates, current, baseline_metrics=baseline)
+    sprt = results[0]["sprt"]
+    assert sprt["decision"] == "pairing_insufficient"
+    assert sprt["reason"] == "paired_ratio_below_min"
+    assert sprt["paired_ratio"] == pytest.approx(0.5)
+    assert results[0]["passed"] is False
 
 
 def test_evaluate_gates_sprt_regression_fails_on_degraded_series() -> None:

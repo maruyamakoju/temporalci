@@ -298,3 +298,90 @@ def test_sprt_gate_can_bootstrap_with_explicit_skip_policy(tmp_path: Path) -> No
     sprt = degraded_result["gates"][0]["sprt"]
     assert sprt["sigma_mode"] == "fixed"
     assert sprt["decision_passed"] is False
+
+
+def test_sprt_gate_fails_when_pairing_ratio_below_minimum(tmp_path: Path) -> None:
+    payload = {
+        "version": 1,
+        "project": "test-project",
+        "suite_name": "sprt-core",
+        "models": [
+            {
+                "name": "mock-model",
+                "adapter": "mock",
+                "params": {
+                    "quality_shift": 0.5,
+                    "noise_scale": 0.06,
+                },
+            }
+        ],
+        "tests": [
+            {
+                "id": "core",
+                "type": "generation",
+                "prompts": [
+                    "a calm city timelapse",
+                    "a smooth tracking shot",
+                ],
+                "seeds": [0, 1, 2],
+                "video": {"num_frames": 25},
+            }
+        ],
+        "metrics": [{"name": "vbench_temporal"}],
+        "gates": [
+            {
+                "metric": "vbench_temporal.dims.motion_smoothness",
+                "op": ">=",
+                "value": 0.0,
+                "method": "sprt_regression",
+                "params": {
+                    "effect_size": 0.03,
+                    "sigma_mode": "fixed",
+                    "sigma": 0.04,
+                    "min_pairs": 2,
+                    "min_paired_ratio": 0.9,
+                    "inconclusive": "fail",
+                    "require_baseline": False,
+                    "baseline_missing": "skip",
+                },
+            }
+        ],
+    }
+    suite_path = tmp_path / "suite_sprt_pairing.yaml"
+    suite_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    baseline_suite = load_suite(suite_path)
+    baseline_result = run_suite(
+        suite=baseline_suite,
+        artifacts_dir=tmp_path / "artifacts",
+        baseline_mode="latest_pass",
+        fail_on_regression=False,
+    )
+    assert baseline_result["status"] == "PASS"
+
+    candidate_payload = dict(payload)
+    candidate_payload["tests"] = [
+        {
+            "id": "core",
+            "type": "generation",
+            "prompts": [
+                "a calm city timelapse",
+                "a new unseen prompt to break sample_id pairing",
+            ],
+            "seeds": [0, 1, 2],
+            "video": {"num_frames": 25},
+        }
+    ]
+    suite_path.write_text(yaml.safe_dump(candidate_payload, sort_keys=False), encoding="utf-8")
+    candidate_suite = load_suite(suite_path)
+    candidate_result = run_suite(
+        suite=candidate_suite,
+        artifacts_dir=tmp_path / "artifacts",
+        baseline_mode="latest_pass",
+        fail_on_regression=False,
+    )
+    assert candidate_result["status"] == "FAIL"
+    sprt = candidate_result["gates"][0]["sprt"]
+    assert sprt["decision"] == "pairing_insufficient"
+    assert sprt["reason"] == "paired_ratio_below_min"
+    assert sprt["paired_ratio"] < 0.9
