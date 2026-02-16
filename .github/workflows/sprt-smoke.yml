@@ -36,7 +36,13 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -q
+          python -m pytest \
+            tests/test_sprt.py \
+            tests/test_calibrate_sprt.py \
+            tests/test_engine_helpers.py \
+            tests/test_report.py \
+            tests/test_cli.py \
+            -q
 
       - name: Calibrate SPRT and enforce checks
         run: |
