@@ -2,6 +2,18 @@ name: sprt-smoke
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - ".github/workflows/sprt-smoke.yml"
+      - "scripts/calibrate_sprt.py"
+      - "temporalci/sprt.py"
+      - "temporalci/sprt_calibration.py"
+      - "temporalci/engine.py"
+      - "temporalci/report.py"
+      - "tests/test_sprt.py"
+      - "tests/test_calibrate_sprt.py"
+      - "tests/test_engine_helpers.py"
 
 jobs:
   sprt-smoke:
