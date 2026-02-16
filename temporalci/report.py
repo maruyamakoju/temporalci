@@ -5,15 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-
-def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
+from temporalci.sprt import derive_sprt_metrics
 
 def _fmt_float(value: float | None, digits: int = 6) -> str:
     if value is None or not math.isfinite(value):
@@ -21,36 +13,10 @@ def _fmt_float(value: float | None, digits: int = 6) -> str:
     return f"{value:.{digits}f}"
 
 
-def _sprt_derived_metrics(*, sprt: dict[str, Any], paired_count: Any) -> dict[str, float | None]:
-    effect_size = _float_or_none(sprt.get("effect_size"))
-    sigma = _float_or_none(sprt.get("sigma"))
-    llr = _float_or_none(sprt.get("llr"))
-    upper = _float_or_none(sprt.get("upper_threshold"))
-    lower = _float_or_none(sprt.get("lower_threshold"))
-    paired = _float_or_none(paired_count)
-
-    drift_per_pair: float | None = None
-    if effect_size is not None and sigma is not None and sigma > 0.0:
-        drift_per_pair = (effect_size * effect_size) / (2.0 * sigma * sigma)
-        if not math.isfinite(drift_per_pair) or drift_per_pair <= 0.0:
-            drift_per_pair = None
-
-    required_pairs_upper: float | None = None
-    required_pairs_lower: float | None = None
-    if drift_per_pair is not None and upper is not None and lower is not None:
-        required_pairs_upper = upper / drift_per_pair
-        required_pairs_lower = abs(lower) / drift_per_pair
-
-    llr_per_pair: float | None = None
-    if llr is not None and paired is not None and paired > 0.0:
-        llr_per_pair = llr / paired
-
-    return {
-        "drift_per_pair": drift_per_pair,
-        "required_pairs_upper": required_pairs_upper,
-        "required_pairs_lower": required_pairs_lower,
-        "llr_per_pair": llr_per_pair,
-    }
+def _fmt_pairs_with_ceil(value: float | None) -> str:
+    if value is None or not math.isfinite(value):
+        return ""
+    return f"{value:.2f} (ceil {int(math.ceil(value))})"
 
 
 def _render_metrics(metrics: dict[str, Any]) -> str:
@@ -98,7 +64,16 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
         paired_count = pairing_dict.get("paired_count", sprt.get("paired_count", ""))
         paired_ratio = pairing_dict.get("paired_ratio", sprt.get("paired_ratio", ""))
         worst_deltas = pairing_dict.get("worst_deltas")
-        derived = _sprt_derived_metrics(sprt=sprt, paired_count=paired_count)
+        derived = derive_sprt_metrics(
+            effect_size=sprt.get("effect_size"),
+            sigma=sprt.get("sigma"),
+            llr=sprt.get("llr"),
+            paired_count=paired_count,
+            upper_threshold=sprt.get("upper_threshold"),
+            lower_threshold=sprt.get("lower_threshold"),
+            alpha=sprt.get("alpha"),
+            beta=sprt.get("beta"),
+        )
 
         details: dict[str, Any] = {}
         for key in (
@@ -134,8 +109,8 @@ def _render_sprt_gates(gates: list[dict[str, Any]]) -> str:
                 details[f"sprt.{key}"] = value
 
         status = "PASS" if sprt.get("decision_passed") else "FAIL"
-        req_pairs_upper = _fmt_float(derived["required_pairs_upper"], 2)
-        req_pairs_lower = _fmt_float(derived["required_pairs_lower"], 2)
+        req_pairs_upper = _fmt_pairs_with_ceil(derived["required_pairs_upper"])
+        req_pairs_lower = _fmt_pairs_with_ceil(derived["required_pairs_lower"])
         req_pairs = ""
         if req_pairs_upper or req_pairs_lower:
             req_pairs = f"{req_pairs_upper} / {req_pairs_lower}"

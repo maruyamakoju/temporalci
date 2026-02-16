@@ -224,6 +224,12 @@ python scripts/calibrate_sprt.py \
 This writes `sprt_calibration.json` with recommended `sigma`, estimated required
 pair counts, and per-run pairing quality diagnostics.
 
+CLI-integrated equivalent:
+
+```bash
+temporalci sprt calibrate --suite examples/regression_sprt.yaml --runs 8
+```
+
 Apply calibrated params to a new suite file (safe default):
 
 ```bash
@@ -248,6 +254,16 @@ python scripts/calibrate_sprt.py \
 ```
 
 `--apply-inplace` is available for direct updates and creates a `.bak` backup.
+
+CLI-integrated equivalents:
+
+```bash
+temporalci sprt apply --suite examples/regression_sprt.yaml --calibration-json artifacts/sprt-calibration/sprt_calibration.json --out examples/regression_sprt.calibrated.yaml
+temporalci sprt check --calibration-json artifacts/sprt-calibration/sprt_calibration.json --min-total-deltas 50 --max-mismatch-runs 0
+```
+
+Calibration JSON now includes `schema_version`, `tool`, `suite_hash_sha1`, and
+`exit_code_semantics` for CI-safe schema stability.
 
 ## Distributed Mode
 

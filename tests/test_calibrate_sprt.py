@@ -9,9 +9,10 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.calibrate_sprt import _estimate_required_pairs
-from scripts.calibrate_sprt import _resolve_sprt_gate
-from scripts.calibrate_sprt import main as calibrate_main
+from temporalci.sprt_calibration import _estimate_required_pairs
+from temporalci.sprt_calibration import _resolve_sprt_gate
+from temporalci.sprt_calibration import calibrate_main
+from temporalci.sprt_calibration import sprt_main
 from temporalci.types import GateSpec
 from temporalci.types import MetricSpec
 from temporalci.types import ModelSpec
@@ -117,8 +118,8 @@ def test_calibrate_main_writes_summary_json(tmp_path: Path, monkeypatch: Any) ->
             return [0.02, -0.01], {"paired_count": 2, "expected_pairs": 2, "paired_ratio": 1.0}
         return [0.01, 0.0], {"paired_count": 2, "expected_pairs": 2, "paired_ratio": 1.0}
 
-    monkeypatch.setattr("scripts.calibrate_sprt.run_suite", _fake_run_suite)
-    monkeypatch.setattr("scripts.calibrate_sprt._paired_deltas_for_gate", _fake_pairing)
+    monkeypatch.setattr("temporalci.sprt_calibration.run_suite", _fake_run_suite)
+    monkeypatch.setattr("temporalci.sprt_calibration._paired_deltas_for_gate", _fake_pairing)
 
     monkeypatch.setattr(
         sys,
@@ -144,6 +145,9 @@ def test_calibrate_main_writes_summary_json(tmp_path: Path, monkeypatch: Any) ->
     assert payload["runs_requested"] == 2
     assert payload["runs_completed"] == 2
     assert payload["baseline_run_id"] == "run-1"
+    assert payload["schema_version"] == 1
+    assert payload["tool"]["name"] == "temporalci.sprt_calibration"
+    assert payload["suite_hash_sha1"]
     assert payload["delta_summary"]["count"] == 4
     assert payload["required_pairs"] is not None
     assert payload["recommended_params"]["sigma_mode"] == "fixed"
@@ -169,8 +173,8 @@ def test_calibrate_main_apply_out_writes_calibrated_suite(
     def _fake_pairing(**_: Any) -> tuple[list[float], dict[str, Any]]:
         return [0.02, -0.01], {"paired_count": 2, "expected_pairs": 2, "paired_ratio": 1.0}
 
-    monkeypatch.setattr("scripts.calibrate_sprt.run_suite", _fake_run_suite)
-    monkeypatch.setattr("scripts.calibrate_sprt._paired_deltas_for_gate", _fake_pairing)
+    monkeypatch.setattr("temporalci.sprt_calibration.run_suite", _fake_run_suite)
+    monkeypatch.setattr("temporalci.sprt_calibration._paired_deltas_for_gate", _fake_pairing)
 
     monkeypatch.setattr(
         sys,
@@ -229,8 +233,8 @@ def test_calibrate_main_check_failure_returns_nonzero_and_skips_apply(
     def _fake_pairing(**_: Any) -> tuple[list[float], dict[str, Any]]:
         return [], {"paired_count": 0, "expected_pairs": 2, "paired_ratio": 0.0}
 
-    monkeypatch.setattr("scripts.calibrate_sprt.run_suite", _fake_run_suite)
-    monkeypatch.setattr("scripts.calibrate_sprt._paired_deltas_for_gate", _fake_pairing)
+    monkeypatch.setattr("temporalci.sprt_calibration.run_suite", _fake_run_suite)
+    monkeypatch.setattr("temporalci.sprt_calibration._paired_deltas_for_gate", _fake_pairing)
 
     monkeypatch.setattr(
         sys,
@@ -262,3 +266,52 @@ def test_calibrate_main_check_failure_returns_nonzero_and_skips_apply(
     assert payload["check"]["passed"] is False
     assert payload["apply"]["applied"] is False
     assert payload["apply"]["reason"] == "check_failed"
+
+
+def test_sprt_main_apply_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_apply(**kwargs: Any) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("temporalci.sprt_calibration.run_apply_from_calibration", _fake_apply)
+    code = sprt_main(
+        [
+            "apply",
+            "--suite",
+            str(tmp_path / "suite.yaml"),
+            "--calibration-json",
+            str(tmp_path / "calib.json"),
+            "--out",
+            str(tmp_path / "out.yaml"),
+        ]
+    )
+    assert code == 0
+    assert str(captured["suite"]).endswith("suite.yaml")
+    assert str(captured["calibration_json"]).endswith("calib.json")
+    assert str(captured["out"]).endswith("out.yaml")
+
+
+def test_sprt_main_check_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_check(**kwargs: Any) -> int:
+        captured.update(kwargs)
+        return 2
+
+    monkeypatch.setattr("temporalci.sprt_calibration.run_check_from_calibration", _fake_check)
+    code = sprt_main(
+        [
+            "check",
+            "--calibration-json",
+            str(tmp_path / "calib.json"),
+            "--fail-if-no-deltas",
+            "--max-mismatch-runs",
+            "0",
+        ]
+    )
+    assert code == 2
+    assert str(captured["calibration_json"]).endswith("calib.json")
+    assert captured["fail_if_no_deltas"] is True
+    assert captured["max_mismatch_runs"] == 0

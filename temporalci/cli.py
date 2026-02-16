@@ -11,6 +11,7 @@ from temporalci.config import SuiteValidationError  # ConfigError alias
 from temporalci.config import load_suite
 from temporalci.engine import run_suite
 from temporalci.metrics import available_metrics
+from temporalci.sprt_calibration import sprt_main
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,6 +47,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Print as JSON",
+    )
+
+    sprt_cmd = sub.add_parser("sprt", help="SPRT calibration/apply/check utilities")
+    sprt_cmd.add_argument(
+        "sprt_args",
+        nargs=argparse.REMAINDER,
+        help="Pass-through args for 'calibrate|apply|check'",
     )
     return parser
 
@@ -108,6 +116,16 @@ def main(argv: list[str] | None = None) -> int:
             f"models={len(suite.models)} tests={len(suite.tests)}"
         )
         return 0
+
+    if args.command == "sprt":
+        if not args.sprt_args:
+            print("usage: temporalci sprt <calibrate|apply|check> ...")
+            return 1
+        try:
+            return sprt_main(args.sprt_args)
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
 
     if args.command != "run":
         parser.error(f"unknown command: {args.command}")

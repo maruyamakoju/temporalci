@@ -1,0 +1,47 @@
+name: sprt-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sprt-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          python -m ruff check temporalci scripts tests
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -q
+
+      - name: Calibrate SPRT and enforce checks
+        run: |
+          python scripts/calibrate_sprt.py \
+            --suite examples/regression_sprt.yaml \
+            --runs 2 \
+            --artifacts-dir artifacts/sprt-smoke \
+            --output-json sprt_smoke_calibration.json \
+            --check \
+            --min-total-deltas 1 \
+            --max-mismatch-runs 0 \
+            --max-recommended-sigma 1.0 \
+            --apply-out artifacts/sprt-smoke/regression_sprt.calibrated.yaml
+
+      - name: Upload SPRT artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprt-smoke-artifacts
+          path: artifacts/sprt-smoke

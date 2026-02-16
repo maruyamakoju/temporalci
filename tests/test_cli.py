@@ -138,3 +138,27 @@ def test_cli_run_gate_fail(tmp_path: Path) -> None:
         "--baseline-mode", "none",
     ])
     assert result == 2  # FAIL exit code
+
+
+# ---------------------------------------------------------------------------
+# sprt command
+# ---------------------------------------------------------------------------
+
+
+def test_cli_sprt_requires_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    result = main(["sprt"])
+    assert result == 1
+    assert "usage: temporalci sprt" in capsys.readouterr().out
+
+
+def test_cli_sprt_dispatches_to_sprt_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_sprt_main(argv: list[str] | None = None) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr("temporalci.cli.sprt_main", _fake_sprt_main)
+    result = main(["sprt", "check", "--calibration-json", "out.json"])
+    assert result == 0
+    assert captured["argv"] == ["check", "--calibration-json", "out.json"]

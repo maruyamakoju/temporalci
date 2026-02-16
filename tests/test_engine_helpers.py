@@ -314,6 +314,32 @@ def test_run_sprt_fixed_sigma_detects_no_regression() -> None:
     assert payload["sigma"] == pytest.approx(0.05)
     assert payload["decision"] == "accept_h1_no_regression"
     assert payload["decision_passed"] is True
+    assert payload["drift_per_pair"] is not None
+    assert payload["required_pairs_upper"] is not None
+    assert payload["required_pairs_lower"] is not None
+    assert payload["llr_per_pair"] is not None
+
+
+def test_run_sprt_insufficient_pairs_still_exposes_threshold_diagnostics() -> None:
+    params = _read_sprt_params(
+        {
+            "alpha": 0.05,
+            "beta": 0.1,
+            "effect_size": 0.05,
+            "sigma_mode": "fixed",
+            "sigma": 0.05,
+            "min_pairs": 6,
+            "inconclusive": "fail",
+        }
+    )
+    payload = _run_sprt(deltas=[0.01, 0.0], params=params)
+    assert payload["decision"] == "inconclusive"
+    assert payload["upper_threshold"] is not None
+    assert payload["lower_threshold"] is not None
+    assert payload["drift_per_pair"] is not None
+    assert payload["required_pairs_upper"] is not None
+    assert payload["required_pairs_lower"] is not None
+    assert payload["llr_per_pair"] == pytest.approx(0.0)
 
 
 def test_run_sprt_fixed_sigma_detects_regression() -> None:

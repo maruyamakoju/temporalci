@@ -17,6 +17,8 @@ from temporalci.constants import (
 )
 from temporalci.metrics import run_metric
 from temporalci.report import write_html_report
+from temporalci.sprt import derive_sprt_metrics
+from temporalci.sprt import sprt_thresholds
 from temporalci.types import GateSpec, GeneratedSample, SuiteSpec
 from temporalci.utils import as_bool, is_number, normalize_prompt, utc_now
 
@@ -363,11 +365,26 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
     min_paired_ratio = float(params.get("min_paired_ratio", 1.0))
     inconclusive = str(params["inconclusive"])
     fixed_sigma = params.get("sigma")
+    thresholds = sprt_thresholds(alpha=alpha, beta=beta)
+    upper: float | None = None
+    lower: float | None = None
+    if thresholds is not None:
+        upper, lower = thresholds
 
     if len(deltas) < min_pairs:
         sigma_for_payload = None
         if sigma_mode == "fixed" and fixed_sigma is not None:
             sigma_for_payload = round(float(fixed_sigma), 8)
+        derived = derive_sprt_metrics(
+            effect_size=effect_size,
+            sigma=sigma_for_payload,
+            llr=0.0,
+            paired_count=len(deltas),
+            upper_threshold=upper,
+            lower_threshold=lower,
+            alpha=alpha,
+            beta=beta,
+        )
         return {
             "decision": "inconclusive",
             "decision_passed": inconclusive == "pass",
@@ -382,6 +399,12 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
             "sigma_mode": sigma_mode,
             "sigma": sigma_for_payload,
             "llr": 0.0,
+            "upper_threshold": round(float(upper), 8) if upper is not None else None,
+            "lower_threshold": round(float(lower), 8) if lower is not None else None,
+            "drift_per_pair": derived["drift_per_pair"],
+            "required_pairs_upper": derived["required_pairs_upper"],
+            "required_pairs_lower": derived["required_pairs_lower"],
+            "llr_per_pair": derived["llr_per_pair"],
         }
 
     if sigma_mode == "fixed":
@@ -396,8 +419,8 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
     sigma_sq = sigma * sigma
     mu0 = -effect_size
     mu1 = 0.0
-    upper = math.log((1.0 - beta) / alpha)
-    lower = math.log(beta / (1.0 - alpha))
+    if upper is None or lower is None:
+        raise ValueError("sprt thresholds must be finite")
 
     llr = 0.0
     crossed_at: int | None = None
@@ -422,6 +445,15 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
     else:
         decision_passed = inconclusive == "pass"
 
+    derived = derive_sprt_metrics(
+        effect_size=effect_size,
+        sigma=sigma,
+        llr=llr,
+        paired_count=len(deltas),
+        upper_threshold=upper,
+        lower_threshold=lower,
+    )
+
     return {
         "decision": decision,
         "decision_passed": decision_passed,
@@ -437,6 +469,10 @@ def _run_sprt(*, deltas: list[float], params: dict[str, Any]) -> dict[str, Any]:
         "llr": round(float(llr), 8),
         "upper_threshold": round(float(upper), 8),
         "lower_threshold": round(float(lower), 8),
+        "drift_per_pair": derived["drift_per_pair"],
+        "required_pairs_upper": derived["required_pairs_upper"],
+        "required_pairs_lower": derived["required_pairs_lower"],
+        "llr_per_pair": derived["llr_per_pair"],
         "crossed_at": crossed_at,
     }
 
