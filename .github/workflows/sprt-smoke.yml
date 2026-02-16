@@ -32,7 +32,7 @@ jobs:
             --suite examples/regression_sprt.yaml \
             --runs 2 \
             --artifacts-dir artifacts/sprt-smoke \
-            --output-json sprt_smoke_calibration.json \
+            --output-json artifacts/sprt-smoke/sprt_smoke_calibration.json \
             --check \
             --min-total-deltas 1 \
             --max-mismatch-runs 0 \
