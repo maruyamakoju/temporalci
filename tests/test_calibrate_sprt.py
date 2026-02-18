@@ -350,6 +350,36 @@ def test_sprt_main_apply_dispatch_with_force(monkeypatch: Any, tmp_path: Path) -
     assert captured["force"] is True
 
 
+def test_sprt_main_calibrate_dispatch_passes_parsed_namespace(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_run(args: Any) -> int:
+        captured["args"] = args
+        return 0
+
+    monkeypatch.setattr("temporalci.sprt_calibration._run_calibrate_with_args", _fake_run)
+    code = sprt_main(
+        [
+            "calibrate",
+            "--suite",
+            str(tmp_path / "suite.yaml"),
+            "--runs",
+            "3",
+            "--check",
+            "--min-total-deltas",
+            "5",
+        ]
+    )
+    assert code == 0
+    args = captured["args"]
+    assert str(args.suite).endswith("suite.yaml")
+    assert args.runs == 3
+    assert args.check is True
+    assert args.min_total_deltas == 5
+
+
 def test_sprt_main_check_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 
@@ -441,5 +471,18 @@ def test_run_check_from_calibration_rejects_unknown_schema_version(tmp_path: Pat
     )
 
     code = run_check_from_calibration(calibration_json=calibration_path)
+
+    assert code == 1
+
+
+def test_run_check_from_calibration_rejects_invalid_check_thresholds(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(tmp_path, suite_path=suite_path)
+
+    code = run_check_from_calibration(
+        calibration_json=calibration_path,
+        min_recommended_sigma=0.2,
+        max_recommended_sigma=0.1,
+    )
 
     assert code == 1
