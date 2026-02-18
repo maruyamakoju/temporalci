@@ -263,7 +263,10 @@ temporalci sprt check --calibration-json artifacts/sprt-calibration/sprt_calibra
 ```
 
 Calibration JSON now includes `schema_version`, `tool`, `suite_hash_sha1`, and
-`exit_code_semantics` for CI-safe schema stability.
+`exit_code_semantics` for CI-safe schema stability. `temporalci sprt apply`
+now enforces `suite_hash_sha1` match by default and fails with exit code `2`
+on mismatch; use `--force` to override intentionally. `temporalci sprt apply`
+and `temporalci sprt check` both reject unknown `schema_version` values.
 
 ## Distributed Mode
 

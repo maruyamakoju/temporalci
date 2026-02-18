@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ import yaml
 from temporalci.sprt_calibration import _estimate_required_pairs
 from temporalci.sprt_calibration import _resolve_sprt_gate
 from temporalci.sprt_calibration import calibrate_main
+from temporalci.sprt_calibration import run_apply_from_calibration
+from temporalci.sprt_calibration import run_check_from_calibration
 from temporalci.sprt_calibration import sprt_main
 from temporalci.types import GateSpec
 from temporalci.types import MetricSpec
@@ -57,6 +60,35 @@ def _write_suite(path: Path) -> Path:
     suite_path = path / "suite_sprt_calibrate.yaml"
     suite_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return suite_path
+
+
+def _write_calibration_json(
+    path: Path,
+    *,
+    suite_path: Path,
+    schema_version: int = 1,
+    suite_hash_sha1: str | None = None,
+) -> Path:
+    if suite_hash_sha1 is None:
+        suite_hash_sha1 = hashlib.sha1(suite_path.read_bytes()).hexdigest()
+    payload = {
+        "schema_version": schema_version,
+        "suite_hash_sha1": suite_hash_sha1,
+        "gate_metric": "vbench_temporal.dims.motion_smoothness",
+        "recommended_params": {
+            "sigma_mode": "fixed",
+            "sigma": 0.04,
+            "min_pairs": 4,
+        },
+        "sprt_params": {
+            "min_paired_ratio": 1.0,
+        },
+        "delta_summary": {"count": 4},
+        "run_summaries": [],
+    }
+    calibration_path = path / "calibration.json"
+    calibration_path.write_text(json.dumps(payload), encoding="utf-8")
+    return calibration_path
 
 
 def test_estimate_required_pairs_matches_formula() -> None:
@@ -291,6 +323,31 @@ def test_sprt_main_apply_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
     assert str(captured["suite"]).endswith("suite.yaml")
     assert str(captured["calibration_json"]).endswith("calib.json")
     assert str(captured["out"]).endswith("out.yaml")
+    assert captured["force"] is False
+
+
+def test_sprt_main_apply_dispatch_with_force(monkeypatch: Any, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_apply(**kwargs: Any) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("temporalci.sprt_calibration.run_apply_from_calibration", _fake_apply)
+    code = sprt_main(
+        [
+            "apply",
+            "--suite",
+            str(tmp_path / "suite.yaml"),
+            "--calibration-json",
+            str(tmp_path / "calib.json"),
+            "--force",
+        ]
+    )
+    assert code == 0
+    assert str(captured["suite"]).endswith("suite.yaml")
+    assert str(captured["calibration_json"]).endswith("calib.json")
+    assert captured["force"] is True
 
 
 def test_sprt_main_check_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
@@ -315,3 +372,74 @@ def test_sprt_main_check_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
     assert str(captured["calibration_json"]).endswith("calib.json")
     assert captured["fail_if_no_deltas"] is True
     assert captured["max_mismatch_runs"] == 0
+
+
+def test_run_apply_from_calibration_fails_on_suite_hash_mismatch(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(
+        tmp_path,
+        suite_path=suite_path,
+        suite_hash_sha1="0" * 40,
+    )
+    out_path = tmp_path / "suite_calibrated.yaml"
+
+    code = run_apply_from_calibration(
+        suite=suite_path,
+        calibration_json=calibration_path,
+        out=out_path,
+    )
+
+    assert code == 2
+    assert not out_path.exists()
+
+
+def test_run_apply_from_calibration_force_overrides_suite_hash_mismatch(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(
+        tmp_path,
+        suite_path=suite_path,
+        suite_hash_sha1="0" * 40,
+    )
+    out_path = tmp_path / "suite_calibrated.yaml"
+
+    code = run_apply_from_calibration(
+        suite=suite_path,
+        calibration_json=calibration_path,
+        out=out_path,
+        force=True,
+    )
+
+    assert code == 0
+    assert out_path.exists()
+
+
+def test_run_apply_from_calibration_rejects_unknown_schema_version(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(
+        tmp_path,
+        suite_path=suite_path,
+        schema_version=999,
+    )
+    out_path = tmp_path / "suite_calibrated.yaml"
+
+    code = run_apply_from_calibration(
+        suite=suite_path,
+        calibration_json=calibration_path,
+        out=out_path,
+    )
+
+    assert code == 1
+    assert not out_path.exists()
+
+
+def test_run_check_from_calibration_rejects_unknown_schema_version(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(
+        tmp_path,
+        suite_path=suite_path,
+        schema_version=999,
+    )
+
+    code = run_check_from_calibration(calibration_json=calibration_path)
+
+    assert code == 1
