@@ -651,10 +651,64 @@ def _run_calibrate_with_args(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_calibration(
+    *,
+    suite: str | Path,
+    gate_metric: str | None = None,
+    model: str | None = None,
+    runs: int = 8,
+    artifacts_dir: str | Path = "artifacts/sprt-calibration",
+    baseline_run_id: str | None = None,
+    output_json: str | Path = "sprt_calibration.json",
+    apply_out: str | Path | None = None,
+    apply_inplace: bool = False,
+    check: bool = False,
+    fail_if_no_deltas: bool = False,
+    min_total_deltas: int | None = None,
+    max_mismatch_runs: int | None = None,
+    max_recommended_sigma: float | None = None,
+    min_recommended_sigma: float | None = None,
+) -> int:
+    args = argparse.Namespace(
+        suite=str(suite),
+        gate_metric=gate_metric,
+        model=model,
+        runs=int(runs),
+        artifacts_dir=str(artifacts_dir),
+        baseline_run_id=baseline_run_id,
+        output_json=str(output_json),
+        apply_out=str(apply_out) if apply_out is not None else None,
+        apply_inplace=bool(apply_inplace),
+        check=bool(check),
+        fail_if_no_deltas=bool(fail_if_no_deltas),
+        min_total_deltas=min_total_deltas,
+        max_mismatch_runs=max_mismatch_runs,
+        max_recommended_sigma=max_recommended_sigma,
+        min_recommended_sigma=min_recommended_sigma,
+    )
+    return _run_calibrate_with_args(args)
+
+
 def calibrate_main(argv: list[str] | None = None) -> int:
     parser = _build_calibrate_arg_parser()
     args = parser.parse_args(argv)
-    return _run_calibrate_with_args(args)
+    return run_calibration(
+        suite=args.suite,
+        gate_metric=args.gate_metric,
+        model=args.model,
+        runs=args.runs,
+        artifacts_dir=args.artifacts_dir,
+        baseline_run_id=args.baseline_run_id,
+        output_json=args.output_json,
+        apply_out=args.apply_out,
+        apply_inplace=bool(args.apply_inplace),
+        check=bool(args.check),
+        fail_if_no_deltas=bool(args.fail_if_no_deltas),
+        min_total_deltas=args.min_total_deltas,
+        max_mismatch_runs=args.max_mismatch_runs,
+        max_recommended_sigma=args.max_recommended_sigma,
+        min_recommended_sigma=args.min_recommended_sigma,
+    )
 
 
 def run_apply_from_calibration(
@@ -784,7 +838,23 @@ def sprt_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.sprt_command == "calibrate":
-        return _run_calibrate_with_args(args)
+        return run_calibration(
+            suite=args.suite,
+            gate_metric=args.gate_metric,
+            model=args.model,
+            runs=args.runs,
+            artifacts_dir=args.artifacts_dir,
+            baseline_run_id=args.baseline_run_id,
+            output_json=args.output_json,
+            apply_out=args.apply_out,
+            apply_inplace=bool(args.apply_inplace),
+            check=bool(args.check),
+            fail_if_no_deltas=bool(args.fail_if_no_deltas),
+            min_total_deltas=args.min_total_deltas,
+            max_mismatch_runs=args.max_mismatch_runs,
+            max_recommended_sigma=args.max_recommended_sigma,
+            min_recommended_sigma=args.min_recommended_sigma,
+        )
 
     if args.sprt_command == "apply":
         return run_apply_from_calibration(

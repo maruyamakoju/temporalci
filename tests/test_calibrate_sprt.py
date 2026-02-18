@@ -300,6 +300,65 @@ def test_calibrate_main_check_failure_returns_nonzero_and_skips_apply(
     assert payload["apply"]["reason"] == "check_failed"
 
 
+def test_calibrate_main_dispatches_to_run_calibration(monkeypatch: Any, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_run_calibration(**kwargs: Any) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("temporalci.sprt_calibration.run_calibration", _fake_run_calibration)
+    code = calibrate_main(
+        [
+            "--suite",
+            str(tmp_path / "suite.yaml"),
+            "--runs",
+            "3",
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--output-json",
+            "calib.json",
+            "--check",
+            "--max-mismatch-runs",
+            "1",
+        ]
+    )
+
+    assert code == 0
+    assert str(captured["suite"]).endswith("suite.yaml")
+    assert captured["runs"] == 3
+    assert captured["check"] is True
+    assert captured["max_mismatch_runs"] == 1
+
+
+def test_sprt_main_calibrate_dispatches_to_run_calibration(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_run_calibration(**kwargs: Any) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("temporalci.sprt_calibration.run_calibration", _fake_run_calibration)
+    code = sprt_main(
+        [
+            "calibrate",
+            "--suite",
+            str(tmp_path / "suite.yaml"),
+            "--runs",
+            "5",
+            "--max-recommended-sigma",
+            "0.2",
+        ]
+    )
+
+    assert code == 0
+    assert str(captured["suite"]).endswith("suite.yaml")
+    assert captured["runs"] == 5
+    assert captured["max_recommended_sigma"] == pytest.approx(0.2)
+
+
 def test_sprt_main_apply_dispatch(monkeypatch: Any, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 
@@ -471,6 +530,21 @@ def test_run_check_from_calibration_rejects_unknown_schema_version(tmp_path: Pat
     )
 
     code = run_check_from_calibration(calibration_json=calibration_path)
+
+    assert code == 1
+
+
+def test_run_check_from_calibration_rejects_invalid_thresholds(tmp_path: Path) -> None:
+    suite_path = _write_suite(tmp_path)
+    calibration_path = _write_calibration_json(
+        tmp_path,
+        suite_path=suite_path,
+    )
+
+    code = run_check_from_calibration(
+        calibration_json=calibration_path,
+        min_total_deltas=-1,
+    )
 
     assert code == 1
 
