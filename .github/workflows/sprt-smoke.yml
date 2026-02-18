@@ -9,15 +9,18 @@ on:
     paths:
       - ".github/workflows/sprt-smoke.yml"
       - "scripts/calibrate_sprt.py"
-      - "temporalci/sprt.py"
-      - "temporalci/sprt_calibration.py"
-      - "temporalci/engine.py"
-      - "temporalci/report.py"
+      - "temporalci/**"
       - "tests/test_sprt.py"
       - "tests/test_calibrate_sprt.py"
       - "tests/test_engine_helpers.py"
       - "tests/test_report.py"
       - "tests/test_cli.py"
+      - "examples/regression_sprt.yaml"
+      - "pyproject.toml"
+
+concurrency:
+  group: sprt-smoke-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   sprt-smoke:
