@@ -440,3 +440,4 @@ python scripts/check_autopilot_health.py \
 ```
 
 For step-by-step operational procedures, see `docs/autopilot_runbook.md`.
+branch_protection_smoke_2
