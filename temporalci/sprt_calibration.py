@@ -22,6 +22,7 @@ from temporalci.utils import atomic_write_json
 from temporalci.utils import utc_now_iso
 
 _CALIBRATION_SCHEMA_VERSION = 1
+_SUPPORTED_CALIBRATION_SCHEMA_VERSIONS = {_CALIBRATION_SCHEMA_VERSION}
 
 
 def _quantile(values: list[float], q: float) -> float | None:
@@ -131,6 +132,32 @@ def _load_calibration_summary(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"calibration payload must be an object: {path}")
     return payload
+
+
+def _validate_calibration_schema(summary: dict[str, Any]) -> tuple[bool, str | None]:
+    schema_version = summary.get("schema_version")
+    if not isinstance(schema_version, int):
+        return False, "calibration json missing integer schema_version"
+    if schema_version not in _SUPPORTED_CALIBRATION_SCHEMA_VERSIONS:
+        supported = sorted(_SUPPORTED_CALIBRATION_SCHEMA_VERSIONS)
+        return (
+            False,
+            f"unsupported schema_version={schema_version}; supported={supported}",
+        )
+    return True, None
+
+
+def _validate_suite_hash(summary: dict[str, Any], suite_path: Path) -> tuple[bool, str | None]:
+    expected_hash = summary.get("suite_hash_sha1")
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        return False, "calibration json missing suite_hash_sha1"
+    actual_hash = _sha1_file(suite_path)
+    if actual_hash != expected_hash:
+        return (
+            False,
+            f"suite_hash_sha1 mismatch: calibration={expected_hash} suite={actual_hash}",
+        )
+    return True, None
 
 
 def _delta_summary(deltas: list[float]) -> dict[str, Any]:
@@ -624,6 +651,7 @@ def run_apply_from_calibration(
     gate_metric: str | None = None,
     out: str | Path | None = None,
     inplace: bool = False,
+    force: bool = False,
 ) -> int:
     suite_path = Path(suite).resolve()
     calibration_path = Path(calibration_json).resolve()
@@ -632,6 +660,18 @@ def run_apply_from_calibration(
         return 1
 
     summary = _load_calibration_summary(calibration_path)
+    schema_ok, schema_error = _validate_calibration_schema(summary)
+    if not schema_ok:
+        print(schema_error)
+        return 1
+
+    suite_hash_ok, suite_hash_error = _validate_suite_hash(summary, suite_path)
+    if not suite_hash_ok and not force:
+        print(f"{suite_hash_error}; rerun with --force to override")
+        return 2
+    if not suite_hash_ok and force:
+        print(f"suite_hash_check_overridden: {suite_hash_error}")
+
     recommended = summary.get("recommended_params")
     if not isinstance(recommended, dict):
         print(f"calibration json missing recommended_params: {calibration_path}")
@@ -676,6 +716,10 @@ def run_check_from_calibration(
     min_recommended_sigma: float | None = None,
 ) -> int:
     summary = _load_calibration_summary(Path(calibration_json).resolve())
+    schema_ok, schema_error = _validate_calibration_schema(summary)
+    if not schema_ok:
+        print(schema_error)
+        return 1
     failures = _evaluate_checks(
         summary=summary,
         fail_if_no_deltas=fail_if_no_deltas,
@@ -722,6 +766,7 @@ def sprt_main(argv: list[str] | None = None) -> int:
     apply_cmd.add_argument("--gate-metric", default=None)
     apply_cmd.add_argument("--out", default=None)
     apply_cmd.add_argument("--inplace", action="store_true")
+    apply_cmd.add_argument("--force", action="store_true")
 
     check_cmd = sub.add_parser("check", help="Validate calibration JSON thresholds")
     check_cmd.add_argument("--calibration-json", required=True)
@@ -775,6 +820,7 @@ def sprt_main(argv: list[str] | None = None) -> int:
             gate_metric=args.gate_metric,
             out=args.out,
             inplace=bool(args.inplace),
+            force=bool(args.force),
         )
 
     if args.sprt_command == "check":
