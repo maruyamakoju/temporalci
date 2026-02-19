@@ -12,7 +12,9 @@ DEFAULT_POLICY_KEYWORDS = {
 }
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate(
+    samples: list[GeneratedSample], params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     params = params or {}
     raw_policies = params.get("policies", list(DEFAULT_POLICY_KEYWORDS.keys()))
     if isinstance(raw_policies, list):

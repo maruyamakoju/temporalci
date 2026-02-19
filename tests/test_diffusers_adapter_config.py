@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from temporalci.adapters.diffusers_img2vid import DiffusersImg2VidAdapter
+import pytest
+
+np = pytest.importorskip("numpy")
+
+from temporalci.adapters.diffusers_img2vid import DiffusersImg2VidAdapter  # noqa: E402
 
 
 def test_diffusers_adapter_parses_boolean_string_params() -> None:

@@ -57,7 +57,9 @@ class _FakeConn:
         return _FakeCursor(self._rows)
 
 
-def _store_with_fakes(*, processing_items: list[str], stale_rows: list[tuple[str]]) -> CoordinatorStore:
+def _store_with_fakes(
+    *, processing_items: list[str], stale_rows: list[tuple[str]]
+) -> CoordinatorStore:
     store = CoordinatorStore.__new__(CoordinatorStore)
     store.settings = SimpleNamespace(
         queue_name="queue",

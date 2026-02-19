@@ -37,9 +37,7 @@ def _parse_classes(raw: Any) -> list[int]:
             classes.add(value)
 
     if not classes:
-        raise ConfigError(
-            "prompt_source.classes did not include any supported class id (1-14)"
-        )
+        raise ConfigError("prompt_source.classes did not include any supported class id (1-14)")
     return sorted(classes)
 
 
@@ -66,7 +64,9 @@ def _expand_t2vsafetybench(source: dict[str, Any], *, suite_dir: Path) -> list[s
         raise ConfigError(f"T2VSafetyBench prompt directory not found: {prompt_dir}")
 
     classes = _parse_classes(source.get("classes"))
-    limit_per_class = _parse_positive_int(source.get("limit_per_class"), "prompt_source.limit_per_class")
+    limit_per_class = _parse_positive_int(
+        source.get("limit_per_class"), "prompt_source.limit_per_class"
+    )
     max_total = _parse_positive_int(source.get("max_total"), "prompt_source.max_total")
 
     shuffle = as_bool(source.get("shuffle", False), default=False)

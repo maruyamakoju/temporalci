@@ -66,7 +66,9 @@ def _build_benchmark_stats(
     for sample in samples:
         normalized = normalize_prompt(sample.prompt)
         class_id = prompt_index.get(normalized)
-        class_name = CLASS_LABELS.get(class_id, "unmatched") if class_id is not None else "unmatched"
+        class_name = (
+            CLASS_LABELS.get(class_id, "unmatched") if class_id is not None else "unmatched"
+        )
         matched_flag = class_id is not None
         if matched_flag:
             matched += 1
@@ -123,10 +125,7 @@ def _parse_command(raw: Any, *, manifest_path: Path, output_path: Path) -> list[
     else:
         raise ValueError("params.evaluator_command must be a non-empty string or list")
 
-    return [
-        part.format(manifest=str(manifest_path), output=str(output_path))
-        for part in parts
-    ]
+    return [part.format(manifest=str(manifest_path), output=str(output_path)) for part in parts]
 
 
 def _run_external_evaluator(
@@ -154,9 +153,7 @@ def _run_external_evaluator(
             f"{proc.returncode}: {proc.stderr.strip() or proc.stdout.strip()}"
         )
     if not output_path.exists():
-        raise FileNotFoundError(
-            f"external evaluator did not produce output file: {output_path}"
-        )
+        raise FileNotFoundError(f"external evaluator did not produce output file: {output_path}")
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -204,7 +201,9 @@ def _parse_classes(classes_raw: Any) -> list[int]:
 # ---------------------------------------------------------------------------
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate(
+    samples: list[GeneratedSample], params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Run T2VSafetyBench evaluation on *samples*."""
     params = params or {}
     suite_root = Path(str(params.get("suite_root", "vendor/T2VSafetyBench"))).resolve()

@@ -34,7 +34,9 @@ def _score_stream(stream: list[float]) -> dict[str, float]:
     }
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate(
+    samples: list[GeneratedSample], params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     params = params or {}
     requested_dims = params.get("dims", ALL_DIMS)
     if not isinstance(requested_dims, list):

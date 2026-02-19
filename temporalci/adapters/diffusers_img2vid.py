@@ -58,7 +58,9 @@ class DiffusersImg2VidAdapter(ModelAdapter):
         torch, Image, export_to_video = self._load_runtime_dependencies()
         pipeline = self._load_pipeline(torch=torch)
 
-        init_image_path = self._resolve_init_image_path(prompt=prompt, seed=seed, video_cfg=video_cfg)
+        init_image_path = self._resolve_init_image_path(
+            prompt=prompt, seed=seed, video_cfg=video_cfg
+        )
         with Image.open(init_image_path) as init_handle:
             init_image = init_handle.convert("RGB")
 
@@ -99,8 +101,13 @@ class DiffusersImg2VidAdapter(ModelAdapter):
         token = hashlib.sha1(f"{test_id}|{prompt}|{seed}".encode("utf-8")).hexdigest()[:12]
         video_path = output_dir / f"{token}.mp4"
         export_to_video(frames, str(video_path), fps=fps)
-        encode_requested = str(video_cfg.get("encode", self.params.get("encode", "h264"))).strip().lower() or "h264"
-        encode_applied, encode_error = self._maybe_reencode(video_path=video_path, encode=encode_requested)
+        encode_requested = (
+            str(video_cfg.get("encode", self.params.get("encode", "h264"))).strip().lower()
+            or "h264"
+        )
+        encode_applied, encode_error = self._maybe_reencode(
+            video_path=video_path, encode=encode_requested
+        )
 
         stream = self._frame_luma_stream(frames)
         metadata = {
@@ -128,7 +135,9 @@ class DiffusersImg2VidAdapter(ModelAdapter):
             metadata=metadata,
         )
 
-    def _resolve_init_image_path(self, *, prompt: str, seed: int, video_cfg: dict[str, Any]) -> Path:
+    def _resolve_init_image_path(
+        self, *, prompt: str, seed: int, video_cfg: dict[str, Any]
+    ) -> Path:
         single = video_cfg.get("init_image", self.params.get("init_image"))
         if isinstance(single, str) and single.strip():
             path = Path(single)

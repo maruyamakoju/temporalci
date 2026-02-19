@@ -5,12 +5,43 @@ TemporalCI is a CI runner for video-model regression and safety gates.
 ## What Works Now
 
 - Suite-driven execution (`YAML`)
-- CLI (`run`, `validate`, `list`)
+- CLI with 15+ subcommands (`run`, `validate`, `list`, `status`, `compare`, `prune`, `trend`, `export`, `init`, `annotate`, `report`, `repair-index`, `alert`, `tag`, `history`, `sprt`, `doctor`)
 - Adapters: `mock`, `http`, `diffusers_img2vid`
 - Metrics: `vbench_temporal`, `safety_t2v`, `vbench_official`, `t2vsafetybench_official`
-- Gates + baseline regression (`latest`, `latest_pass`, `none`)
-- Artifacts (`run.json`, `report.html`) with retention policy
-- Distributed foundation (FastAPI coordinator + Redis + Postgres + MinIO)
+- Gates + baseline regression (`latest`, `latest_pass`, `none`, `tag:<name>`, `rolling:<N>`)
+- Statistical regression gate (SPRT) with calibration workflow
+- Artifacts (`run.json`, `report.html`, `trend_report.html`, `compare_report.html`, `badge.svg`, `index.html`) with retention policy
+- Webhook alerts (Slack, Discord, any HTTP endpoint) with deduplication
+- Multi-model parallel execution with `--workers N` and `--retry N`
+- Distributed mode (FastAPI coordinator + Redis + Postgres + MinIO)
+
+## Architecture
+
+```
+temporalci/
+  cli.py            — CLI entry point + argument parser
+  _cli_impl.py      — Command handlers (_cmd_status, _cmd_compare, etc.)
+  engine.py          — Suite orchestration (run_suite)
+  gate_eval.py       — Gate evaluation logic (SPRT, thresholds, regressions)
+  baseline.py        — Baseline management (tags, rolling, load_previous_run)
+  config.py          — Suite YAML loading + validation
+  types.py           — Data classes (SuiteSpec, RunResult, etc.)
+  errors.py          — Exception hierarchy
+  utils.py           — Shared utilities
+  sprt.py            — SPRT math primitives
+  sprt_calibration.py— SPRT calibration workflow
+  badge.py           — Shields.io-compatible SVG badge generation
+  compare.py         — Cross-run comparison + HTML report
+  trend.py           — Multi-run trend analysis + SVG charts
+  report.py          — Per-run HTML diagnostic report
+  export.py          — JSONL/CSV/JSON export
+  prune.py           — Old run directory cleanup
+  index.py           — Suite-level index.html generation
+  prompt_sources.py  — T2VSafetyBench prompt expansion
+  adapters/          — Video generation backends (mock, http, diffusers)
+  metrics/           — Evaluation backends (temporal, safety, vbench, t2vsafetybench)
+  coordinator/       — Distributed mode (FastAPI app, worker, store, MinIO)
+```
 
 ## Install
 
@@ -23,10 +54,33 @@ python -m pip install -e .
 Optional sets:
 
 ```bash
-python -m pip install -e .[diffusers]
-python -m pip install -e .[official-benchmarks]
-python -m pip install -e .[distributed]
+python -m pip install -e ".[diffusers]"
+python -m pip install -e ".[official-benchmarks]"
+python -m pip install -e ".[distributed]"
 ```
+
+## Development
+
+```bash
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
+Run the full test suite:
+
+```bash
+python -m pytest tests/ -q
+```
+
+Type checking and linting:
+
+```bash
+python -m mypy temporalci/
+python -m ruff check temporalci/ tests/
+python -m ruff format --check temporalci/ tests/
+```
+
+All three checks run automatically in CI (`.github/workflows/ci.yml`) on push/PR and locally via pre-commit hooks.
 
 ## CLI
 
@@ -36,7 +90,48 @@ temporalci validate examples/regression_core.yaml
 temporalci run examples/regression_core.yaml --baseline-mode latest_pass
 ```
 
-Exit codes:
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `run` | Execute a suite run (core workflow) |
+| `validate` | Validate suite YAML without running |
+| `list` | List available adapters and metrics |
+| `status` | Show run history (`--output-format text\|json\|csv`) |
+| `compare` | Compare two runs or auto-select baseline vs candidate |
+| `prune` | Delete old run directories (`--keep-last N`) |
+| `trend` | Generate trend report HTML |
+| `export` | Export runs to JSONL/CSV/JSON |
+| `init` | Scaffold a new suite.yaml |
+| `annotate` | Add notes to a completed run |
+| `report` | Regenerate report.html from run.json |
+| `repair-index` | Rebuild runs.jsonl from run directories |
+| `alert` | Show/manage alert state |
+| `tag` | Tag a run for baseline reference |
+| `history` | Show detailed run history |
+| `doctor` | Check adapter/metric availability |
+| `sprt` | SPRT calibration subcommands (`calibrate`, `apply`, `check`) |
+
+### `run` options
+
+```bash
+temporalci run suite.yaml \
+  --baseline-mode latest_pass \
+  --artifacts-dir artifacts/ \
+  --sample N \
+  --tag stable \
+  --workers 4 \
+  --retry 2 \
+  --prune-keep-last 10 \
+  --webhook-url https://hooks.slack.com/... \
+  --fail-on-skip \
+  --no-progress \
+  --print-json \
+  --output-json result.json \
+  --watch 300
+```
+
+### Exit codes
 
 - `0`: pass
 - `2`: gate failure or regression failure
@@ -161,6 +256,44 @@ artifacts:
   keep_workdir: false     # used by some official metric backends
 ```
 
+## Diagnostic Report (`report.html`)
+
+Each run writes a `report.html` with:
+
+- **Gate Results** — pass/fail per gate with actual vs target
+- **SPRT Analysis** — per-gate LLR trajectory chart (inline SVG), worst-delta table with prompt/seed lookup, sigma, paired count, threshold distances
+- **Worst Sample Pairs** — which specific prompt + seed degraded the most (resolved from sample_id)
+- **Regression vs Baseline** — delta per metric vs latest passing run, colored by direction
+
+## Trend Report
+
+Generate a cross-run HTML trend report from artifact history:
+
+```bash
+temporalci trend \
+  --model-root artifacts/demo-video-model/regression_core/demo_mock_model \
+  --output artifacts/trend_report.html \
+  --last-n 30
+```
+
+This produces a self-contained HTML with:
+
+- Pass/fail strip (one colored cell per run)
+- SVG line chart per metric (green = PASS run, red = FAIL run)
+- Run history table
+
+## Webhook Alerts
+
+Receive a POST notification when a gate or regression fails:
+
+```bash
+temporalci run examples/regression_sprt.yaml \
+  --baseline-mode latest_pass \
+  --webhook-url https://hooks.slack.com/services/...
+```
+
+The payload is JSON with `run_id`, `status`, `gate_failed`, `regression_failed`, `gate_failures` list, and `run_dir`.  Works with Slack incoming webhooks, Discord webhooks, or any HTTP endpoint.
+
 ## Statistical Regression Gate (SPRT)
 
 `method: sprt_regression` adds a sequential hypothesis test on top of the
@@ -212,61 +345,38 @@ Operational recommendation:
 pairing ratio, worst sample deltas, and derived diagnostics:
 `drift_per_pair`, `required_pairs_upper/lower`, and `llr_per_pair`.
 
+### SPRT Calibration
+
 Calibrate fixed-sigma settings from repeated no-change runs:
 
 ```bash
-python scripts/calibrate_sprt.py \
+temporalci sprt calibrate \
   --suite examples/regression_sprt.yaml \
   --runs 8 \
   --artifacts-dir artifacts/sprt-calibration
 ```
 
-This writes `sprt_calibration.json` with recommended `sigma`, estimated required
-pair counts, and per-run pairing quality diagnostics.
-
-CLI-integrated equivalent:
+Apply calibrated params to a suite file:
 
 ```bash
-temporalci sprt calibrate --suite examples/regression_sprt.yaml --runs 8
+temporalci sprt apply \
+  --suite examples/regression_sprt.yaml \
+  --calibration-json artifacts/sprt-calibration/sprt_calibration.json \
+  --out examples/regression_sprt.calibrated.yaml
 ```
 
-Apply calibrated params to a new suite file (safe default):
+Run CI-style checks on calibration quality:
 
 ```bash
-python scripts/calibrate_sprt.py \
-  --suite examples/regression_sprt.yaml \
-  --runs 8 \
-  --artifacts-dir artifacts/sprt-calibration \
-  --apply-out examples/regression_sprt.calibrated.yaml
-```
-
-Run CI-style checks and fail with exit code `2` when calibration quality is insufficient:
-
-```bash
-python scripts/calibrate_sprt.py \
-  --suite examples/regression_sprt.yaml \
-  --runs 8 \
-  --artifacts-dir artifacts/sprt-calibration \
-  --check \
-  --fail-if-no-deltas \
+temporalci sprt check \
+  --calibration-json artifacts/sprt-calibration/sprt_calibration.json \
   --min-total-deltas 50 \
   --max-mismatch-runs 0
 ```
 
-`--apply-inplace` is available for direct updates and creates a `.bak` backup.
-
-CLI-integrated equivalents:
-
-```bash
-temporalci sprt apply --suite examples/regression_sprt.yaml --calibration-json artifacts/sprt-calibration/sprt_calibration.json --out examples/regression_sprt.calibrated.yaml
-temporalci sprt check --calibration-json artifacts/sprt-calibration/sprt_calibration.json --min-total-deltas 50 --max-mismatch-runs 0
-```
-
-Calibration JSON now includes `schema_version`, `tool`, `suite_hash_sha1`, and
+Calibration JSON includes `schema_version`, `tool`, `suite_hash_sha1`, and
 `exit_code_semantics` for CI-safe schema stability. `temporalci sprt apply`
-now enforces `suite_hash_sha1` match by default and fails with exit code `2`
-on mismatch; use `--force` to override intentionally. `temporalci sprt apply`
-and `temporalci sprt check` both reject unknown `schema_version` values.
+enforces `suite_hash_sha1` match by default; use `--force` to override.
 
 ## Distributed Mode
 
@@ -349,19 +459,12 @@ Operational procedure details are documented in `docs/distributed_recovery_runbo
 
 ## CI Workflows
 
-GPU demo manual workflow:
-
-- `.github/workflows/svd-regression-gate-demo.yml`
-
-Distributed recovery workflows:
-
-- `.github/workflows/distributed-recovery-e2e.yml` (manual + nightly schedule)
-
-The GPU workflow runs baseline then candidate on a self-hosted GPU runner and checks expected gate behavior.
-
-Latest local distributed recovery proof snapshot:
-
-- `docs/proofs/distributed_recovery_e2e_20260213.md`
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | push/PR to main/master | Tests (3.11+3.12), ruff, mypy |
+| `quality-gate.yml` | push/PR to main/master | Mock model regression gate demo |
+| `svd-regression-gate-demo.yml` | manual | GPU demo on self-hosted runner |
+| `distributed-recovery-e2e.yml` | manual + nightly | Distributed recovery test |
 
 ## 96h Autopilot
 

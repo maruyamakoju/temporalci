@@ -93,8 +93,5 @@ def test_distributed_recovery_e2e_integration(tmp_path: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
-        details = (
-            f"stdout:\n{result.stdout}\n\n"
-            f"stderr:\n{result.stderr}\n"
-        )
+        details = f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}\n"
         pytest.fail(f"distributed recovery E2E failed with code={result.returncode}\n{details}")

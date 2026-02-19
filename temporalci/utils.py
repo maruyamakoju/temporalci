@@ -8,13 +8,16 @@ metric backends.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import mean
 from typing import Any
 
 # ---------------------------------------------------------------------------
 # Time helpers
 # ---------------------------------------------------------------------------
+
 
 def utc_now() -> datetime:
     """Return the current UTC time as an aware :class:`datetime`."""
@@ -79,6 +82,7 @@ def as_int(value: Any, *, default: int, minimum: int) -> int:
 # Path resolution
 # ---------------------------------------------------------------------------
 
+
 def resolve_path(raw_path: str, *, suite_dir: Path) -> Path:
     """Resolve *raw_path* relative to *suite_dir*, falling back to cwd.
 
@@ -102,6 +106,7 @@ def resolve_path(raw_path: str, *, suite_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Prompt normalization / deduplication
 # ---------------------------------------------------------------------------
+
 
 def normalize_prompt(text: str) -> str:
     """Collapse whitespace and lowercase *text* for comparison."""
@@ -127,6 +132,7 @@ def dedupe_prompts(prompts: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # JSON I/O
 # ---------------------------------------------------------------------------
+
 
 def read_json_dict(path: Path) -> dict[str, Any] | None:
     """Read *path* as JSON and return the top-level dict, or ``None`` on error."""
@@ -154,3 +160,38 @@ def safe_write_json(path: Path, payload: dict[str, Any]) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+# ---------------------------------------------------------------------------
+# Dotted-path traversal
+# ---------------------------------------------------------------------------
+
+
+def resolve_dotted_path(obj: Any, dotted_path: str) -> Any:
+    """Walk *obj* along a dotted key path (e.g. ``'a.b.c'``).
+
+    Raises :class:`KeyError` with the full path when any segment is missing.
+    """
+    current: Any = obj
+    for part in dotted_path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            raise KeyError(dotted_path)
+        current = current[part]
+    return current
+
+
+# ---------------------------------------------------------------------------
+# Statistics helpers
+# ---------------------------------------------------------------------------
+
+
+def sample_std(values: list[float]) -> float:
+    """Sample standard deviation of *values*.
+
+    Returns ``0.0`` when fewer than 2 values are provided.
+    """
+    if len(values) < 2:
+        return 0.0
+    avg = mean(values)
+    variance = sum((v - avg) ** 2 for v in values) / max(1, len(values) - 1)
+    return math.sqrt(max(0.0, variance))

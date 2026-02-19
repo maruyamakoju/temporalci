@@ -1,0 +1,162 @@
+name: Quality Gate (Mock Model)
+
+# Demonstrates TemporalCI's regression gate in a real CI pipeline using the
+# built-in mock adapter — no GPU required.
+#
+# Flow:
+#   1. baseline job  — establishes a passing baseline run (no prior history)
+#   2. candidate job — runs the same suite against the baseline; gate fires on regression
+#   3. degraded job  — runs a deliberately degraded suite; expects exit code 2 (gate fail)
+#
+# Artifacts include report.html, compare_report.html, trend_report.html, and index.html.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  ARTIFACTS_DIR: artifacts/quality-gate-ci
+  SUITE: examples/regression_core.yaml
+  MODEL_ROOT: artifacts/quality-gate-ci/demo-video-model/regression_core/demo_mock_model
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: baseline run (no prior history — bootstrap)
+  # ─────────────────────────────────────────────────────────────────
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install TemporalCI
+        run: pip install -e .
+
+      - name: Validate suite
+        run: temporalci validate ${{ env.SUITE }}
+
+      - name: Run baseline
+        run: |
+          temporalci run ${{ env.SUITE }} \
+            --baseline-mode none \
+            --artifacts-dir ${{ env.ARTIFACTS_DIR }}
+
+      - name: Show run status
+        if: always()
+        run: |
+          temporalci status \
+            --model-root ${{ env.MODEL_ROOT }} \
+            --last-n 5 || true
+
+      - name: Upload baseline artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: baseline-artifacts-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: candidate run — compare against baseline (expects PASS)
+  # ─────────────────────────────────────────────────────────────────
+  candidate:
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install TemporalCI
+        run: pip install -e .
+
+      - name: Download baseline artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: baseline-artifacts-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}
+
+      - name: Run candidate (regression gate)
+        run: |
+          temporalci run ${{ env.SUITE }} \
+            --baseline-mode latest_pass \
+            --artifacts-dir ${{ env.ARTIFACTS_DIR }}
+
+      - name: Show run history
+        if: always()
+        run: |
+          temporalci status \
+            --model-root ${{ env.MODEL_ROOT }} \
+            --last-n 10 || true
+
+      - name: Auto-compare latest vs baseline
+        if: always()
+        run: |
+          temporalci compare \
+            --model-root ${{ env.MODEL_ROOT }} \
+            --output ${{ env.ARTIFACTS_DIR }}/compare_latest.html || true
+
+      - name: Upload candidate artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-artifacts-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 3: degraded run — gate MUST fail (exit 2); verified below
+  # ─────────────────────────────────────────────────────────────────
+  degraded-gate-check:
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install TemporalCI
+        run: pip install -e .
+
+      - name: Download baseline artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: baseline-artifacts-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}
+
+      - name: Run degraded suite (expects gate failure)
+        id: degraded
+        run: |
+          temporalci run examples/regression_core_degraded.yaml \
+            --baseline-mode latest_pass \
+            --artifacts-dir ${{ env.ARTIFACTS_DIR }}
+        continue-on-error: true
+
+      - name: Verify gate correctly detected degradation
+        run: |
+          EXIT="${{ steps.degraded.outputs.exit_code }}"
+          echo "Degraded run exit code: ${{ steps.degraded.outcome }}"
+          if [ "${{ steps.degraded.outcome }}" = "failure" ]; then
+            echo "✓ Gate correctly rejected degraded model"
+          else
+            echo "✗ Gate should have rejected degraded model — check thresholds"
+            exit 1
+          fi
+
+      - name: Upload degraded artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: degraded-artifacts-${{ github.run_number }}
+          path: ${{ env.ARTIFACTS_DIR }}/
+          retention-days: 7

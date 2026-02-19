@@ -45,7 +45,9 @@ def create_app() -> Any:
     @app.post("/runs")
     def create_run(body: RunCreateBody) -> dict[str, Any]:
         if not body.suite_path and not body.suite_yaml:
-            raise HTTPException(status_code=400, detail="one of suite_path or suite_yaml is required")
+            raise HTTPException(
+                status_code=400, detail="one of suite_path or suite_yaml is required"
+            )
         if body.baseline_mode not in BASELINE_MODES:
             available = ", ".join(sorted(BASELINE_MODES))
             raise HTTPException(

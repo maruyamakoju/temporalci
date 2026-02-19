@@ -7,18 +7,19 @@ import math
 import shutil
 from pathlib import Path
 from statistics import mean
-from typing import Any
+from typing import Any, cast
 
 from temporalci import __version__
 from temporalci.config import load_suite
 from temporalci.config import select_model
-from temporalci.engine import _paired_deltas_for_gate
-from temporalci.engine import _read_sprt_params
 from temporalci.engine import run_suite
+from temporalci.gate_eval import _paired_deltas_for_gate
+from temporalci.gate_eval import _read_sprt_params
 from temporalci.sprt import estimate_required_pairs
 from temporalci.types import GateSpec
 from temporalci.types import SuiteSpec
 from temporalci.utils import atomic_write_json
+from temporalci.utils import sample_std as _sample_std
 from temporalci.utils import utc_now_iso
 
 _CALIBRATION_SCHEMA_VERSION = 1
@@ -40,14 +41,6 @@ def _quantile(values: list[float], q: float) -> float | None:
         return ordered[left]
     frac = pos - left
     return ordered[left] + (ordered[right] - ordered[left]) * frac
-
-
-def _sample_std(values: list[float]) -> float:
-    if len(values) < 2:
-        return 0.0
-    avg = mean(values)
-    variance = sum((value - avg) ** 2 for value in values) / max(1, len(values) - 1)
-    return math.sqrt(max(0.0, variance))
 
 
 def _mad_sigma(values: list[float]) -> float | None:
@@ -314,10 +307,39 @@ def _evaluate_checks(
     return failures
 
 
-def calibrate_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Calibrate SPRT fixed-sigma settings from repeated no-change runs."
-    )
+def _add_check_threshold_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--fail-if-no-deltas", action="store_true")
+    parser.add_argument("--min-total-deltas", type=int, default=None)
+    parser.add_argument("--max-mismatch-runs", type=int, default=None)
+    parser.add_argument("--max-recommended-sigma", type=float, default=None)
+    parser.add_argument("--min-recommended-sigma", type=float, default=None)
+
+
+def _validate_check_threshold_args(
+    *,
+    min_total_deltas: int | None,
+    max_mismatch_runs: int | None,
+    max_recommended_sigma: float | None,
+    min_recommended_sigma: float | None,
+) -> str | None:
+    if min_total_deltas is not None and min_total_deltas < 0:
+        return "--min-total-deltas must be >= 0"
+    if max_mismatch_runs is not None and max_mismatch_runs < 0:
+        return "--max-mismatch-runs must be >= 0"
+    if max_recommended_sigma is not None and max_recommended_sigma <= 0:
+        return "--max-recommended-sigma must be > 0"
+    if min_recommended_sigma is not None and min_recommended_sigma <= 0:
+        return "--min-recommended-sigma must be > 0"
+    if (
+        max_recommended_sigma is not None
+        and min_recommended_sigma is not None
+        and min_recommended_sigma > max_recommended_sigma
+    ):
+        return "--min-recommended-sigma must be <= --max-recommended-sigma"
+    return None
+
+
+def _add_calibrate_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--suite", required=True, help="Path to suite YAML")
     parser.add_argument(
         "--gate-metric",
@@ -344,51 +366,29 @@ def calibrate_main(argv: list[str] | None = None) -> int:
         help="Apply calibrated params to --suite in place (creates .bak)",
     )
     parser.add_argument("--check", action="store_true", help="Enable calibration checks")
-    parser.add_argument(
-        "--fail-if-no-deltas",
-        action="store_true",
-        help="Fail checks when no paired deltas are collected",
-    )
-    parser.add_argument(
-        "--min-total-deltas",
-        type=int,
-        default=None,
-        help="Fail checks when total paired deltas are below this threshold",
-    )
-    parser.add_argument(
-        "--max-mismatch-runs",
-        type=int,
-        default=None,
-        help="Fail checks when mismatch run count exceeds this threshold",
-    )
-    parser.add_argument(
-        "--max-recommended-sigma",
-        type=float,
-        default=None,
-        help="Fail checks when recommended sigma exceeds this value",
-    )
-    parser.add_argument(
-        "--min-recommended-sigma",
-        type=float,
-        default=None,
-        help="Fail checks when recommended sigma is below this value",
-    )
-    args = parser.parse_args(argv)
+    _add_check_threshold_args(parser)
 
+
+def _build_calibrate_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Calibrate SPRT fixed-sigma settings from repeated no-change runs."
+    )
+    _add_calibrate_args(parser)
+    return parser
+
+
+def _run_calibrate_with_args(args: argparse.Namespace) -> int:
     if args.runs <= 0:
         print("--runs must be > 0")
         return 1
-    if args.min_total_deltas is not None and args.min_total_deltas < 0:
-        print("--min-total-deltas must be >= 0")
-        return 1
-    if args.max_mismatch_runs is not None and args.max_mismatch_runs < 0:
-        print("--max-mismatch-runs must be >= 0")
-        return 1
-    if args.max_recommended_sigma is not None and args.max_recommended_sigma <= 0:
-        print("--max-recommended-sigma must be > 0")
-        return 1
-    if args.min_recommended_sigma is not None and args.min_recommended_sigma <= 0:
-        print("--min-recommended-sigma must be > 0")
+    check_threshold_error = _validate_check_threshold_args(
+        min_total_deltas=args.min_total_deltas,
+        max_mismatch_runs=args.max_mismatch_runs,
+        max_recommended_sigma=args.max_recommended_sigma,
+        min_recommended_sigma=args.min_recommended_sigma,
+    )
+    if check_threshold_error is not None:
+        print(check_threshold_error)
         return 1
     if args.apply_inplace and args.apply_out:
         print("--apply-inplace and --apply-out are mutually exclusive")
@@ -415,12 +415,15 @@ def calibrate_main(argv: list[str] | None = None) -> int:
         )
         baseline_payload = _load_run_payload(baseline_path)
     else:
-        baseline_payload = run_suite(
-            suite=suite,
-            model_name=model.name,
-            artifacts_dir=artifacts_dir,
-            baseline_mode="none",
-            fail_on_regression=False,
+        baseline_payload = cast(
+            "dict[str, Any]",
+            run_suite(
+                suite=suite,
+                model_name=model.name,
+                artifacts_dir=artifacts_dir,
+                baseline_mode="none",
+                fail_on_regression=False,
+            ),
         )
 
     baseline_metrics = baseline_payload.get("metrics")
@@ -644,6 +647,66 @@ def calibrate_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def run_calibration(
+    *,
+    suite: str | Path,
+    gate_metric: str | None = None,
+    model: str | None = None,
+    runs: int = 8,
+    artifacts_dir: str | Path = "artifacts/sprt-calibration",
+    baseline_run_id: str | None = None,
+    output_json: str | Path = "sprt_calibration.json",
+    apply_out: str | Path | None = None,
+    apply_inplace: bool = False,
+    check: bool = False,
+    fail_if_no_deltas: bool = False,
+    min_total_deltas: int | None = None,
+    max_mismatch_runs: int | None = None,
+    max_recommended_sigma: float | None = None,
+    min_recommended_sigma: float | None = None,
+) -> int:
+    args = argparse.Namespace(
+        suite=str(suite),
+        gate_metric=gate_metric,
+        model=model,
+        runs=int(runs),
+        artifacts_dir=str(artifacts_dir),
+        baseline_run_id=baseline_run_id,
+        output_json=str(output_json),
+        apply_out=str(apply_out) if apply_out is not None else None,
+        apply_inplace=bool(apply_inplace),
+        check=bool(check),
+        fail_if_no_deltas=bool(fail_if_no_deltas),
+        min_total_deltas=min_total_deltas,
+        max_mismatch_runs=max_mismatch_runs,
+        max_recommended_sigma=max_recommended_sigma,
+        min_recommended_sigma=min_recommended_sigma,
+    )
+    return _run_calibrate_with_args(args)
+
+
+def calibrate_main(argv: list[str] | None = None) -> int:
+    parser = _build_calibrate_arg_parser()
+    args = parser.parse_args(argv)
+    return run_calibration(
+        suite=args.suite,
+        gate_metric=args.gate_metric,
+        model=args.model,
+        runs=args.runs,
+        artifacts_dir=args.artifacts_dir,
+        baseline_run_id=args.baseline_run_id,
+        output_json=args.output_json,
+        apply_out=args.apply_out,
+        apply_inplace=bool(args.apply_inplace),
+        check=bool(args.check),
+        fail_if_no_deltas=bool(args.fail_if_no_deltas),
+        min_total_deltas=args.min_total_deltas,
+        max_mismatch_runs=args.max_mismatch_runs,
+        max_recommended_sigma=args.max_recommended_sigma,
+        min_recommended_sigma=args.min_recommended_sigma,
+    )
+
+
 def run_apply_from_calibration(
     *,
     suite: str | Path,
@@ -715,6 +778,16 @@ def run_check_from_calibration(
     max_recommended_sigma: float | None = None,
     min_recommended_sigma: float | None = None,
 ) -> int:
+    check_threshold_error = _validate_check_threshold_args(
+        min_total_deltas=min_total_deltas,
+        max_mismatch_runs=max_mismatch_runs,
+        max_recommended_sigma=max_recommended_sigma,
+        min_recommended_sigma=min_recommended_sigma,
+    )
+    if check_threshold_error is not None:
+        print(check_threshold_error)
+        return 1
+
     summary = _load_calibration_summary(Path(calibration_json).resolve())
     schema_ok, schema_error = _validate_calibration_schema(summary)
     if not schema_ok:
@@ -744,21 +817,7 @@ def sprt_main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="sprt_command", required=True)
 
     calibrate_cmd = sub.add_parser("calibrate", help="Run SPRT calibration")
-    calibrate_cmd.add_argument("--suite", required=True)
-    calibrate_cmd.add_argument("--gate-metric", default=None)
-    calibrate_cmd.add_argument("--model", default=None)
-    calibrate_cmd.add_argument("--runs", type=int, default=8)
-    calibrate_cmd.add_argument("--artifacts-dir", default="artifacts/sprt-calibration")
-    calibrate_cmd.add_argument("--baseline-run-id", default=None)
-    calibrate_cmd.add_argument("--output-json", default="sprt_calibration.json")
-    calibrate_cmd.add_argument("--apply-out", default=None)
-    calibrate_cmd.add_argument("--apply-inplace", action="store_true")
-    calibrate_cmd.add_argument("--check", action="store_true")
-    calibrate_cmd.add_argument("--fail-if-no-deltas", action="store_true")
-    calibrate_cmd.add_argument("--min-total-deltas", type=int, default=None)
-    calibrate_cmd.add_argument("--max-mismatch-runs", type=int, default=None)
-    calibrate_cmd.add_argument("--max-recommended-sigma", type=float, default=None)
-    calibrate_cmd.add_argument("--min-recommended-sigma", type=float, default=None)
+    _add_calibrate_args(calibrate_cmd)
 
     apply_cmd = sub.add_parser("apply", help="Apply calibration JSON to suite YAML")
     apply_cmd.add_argument("--suite", required=True)
@@ -770,48 +829,28 @@ def sprt_main(argv: list[str] | None = None) -> int:
 
     check_cmd = sub.add_parser("check", help="Validate calibration JSON thresholds")
     check_cmd.add_argument("--calibration-json", required=True)
-    check_cmd.add_argument("--fail-if-no-deltas", action="store_true")
-    check_cmd.add_argument("--min-total-deltas", type=int, default=None)
-    check_cmd.add_argument("--max-mismatch-runs", type=int, default=None)
-    check_cmd.add_argument("--max-recommended-sigma", type=float, default=None)
-    check_cmd.add_argument("--min-recommended-sigma", type=float, default=None)
+    _add_check_threshold_args(check_cmd)
 
     args = parser.parse_args(argv)
 
     if args.sprt_command == "calibrate":
-        forwarded: list[str] = [
-            "--suite",
-            str(args.suite),
-            "--runs",
-            str(args.runs),
-            "--artifacts-dir",
-            str(args.artifacts_dir),
-            "--output-json",
-            str(args.output_json),
-        ]
-        if args.gate_metric:
-            forwarded.extend(["--gate-metric", str(args.gate_metric)])
-        if args.model:
-            forwarded.extend(["--model", str(args.model)])
-        if args.baseline_run_id:
-            forwarded.extend(["--baseline-run-id", str(args.baseline_run_id)])
-        if args.apply_out:
-            forwarded.extend(["--apply-out", str(args.apply_out)])
-        if args.apply_inplace:
-            forwarded.append("--apply-inplace")
-        if args.check:
-            forwarded.append("--check")
-        if args.fail_if_no_deltas:
-            forwarded.append("--fail-if-no-deltas")
-        if args.min_total_deltas is not None:
-            forwarded.extend(["--min-total-deltas", str(args.min_total_deltas)])
-        if args.max_mismatch_runs is not None:
-            forwarded.extend(["--max-mismatch-runs", str(args.max_mismatch_runs)])
-        if args.max_recommended_sigma is not None:
-            forwarded.extend(["--max-recommended-sigma", str(args.max_recommended_sigma)])
-        if args.min_recommended_sigma is not None:
-            forwarded.extend(["--min-recommended-sigma", str(args.min_recommended_sigma)])
-        return calibrate_main(forwarded)
+        return run_calibration(
+            suite=args.suite,
+            gate_metric=args.gate_metric,
+            model=args.model,
+            runs=args.runs,
+            artifacts_dir=args.artifacts_dir,
+            baseline_run_id=args.baseline_run_id,
+            output_json=args.output_json,
+            apply_out=args.apply_out,
+            apply_inplace=bool(args.apply_inplace),
+            check=bool(args.check),
+            fail_if_no_deltas=bool(args.fail_if_no_deltas),
+            min_total_deltas=args.min_total_deltas,
+            max_mismatch_runs=args.max_mismatch_runs,
+            max_recommended_sigma=args.max_recommended_sigma,
+            min_recommended_sigma=args.min_recommended_sigma,
+        )
 
     if args.sprt_command == "apply":
         return run_apply_from_calibration(

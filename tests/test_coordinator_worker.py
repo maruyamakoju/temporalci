@@ -63,7 +63,9 @@ def test_worker_send_heartbeat_uses_post(monkeypatch: Any) -> None:
     assert captured["timeout"] == 15
 
 
-def test_worker_executes_inline_suite_relative_to_suite_root(tmp_path: Path, monkeypatch: Any) -> None:
+def test_worker_executes_inline_suite_relative_to_suite_root(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
     prompt_dir = tmp_path / "vendor" / "T2VSafetyBench" / "Tiny-T2VSafetyBench"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     (prompt_dir / "1.txt").write_text("unsafe prompt\n", encoding="utf-8")

@@ -4,17 +4,19 @@ from pathlib import Path
 
 import pytest
 
-from temporalci.engine import (
-    _build_sample_rows_with_retention,
+from temporalci.gate_eval import (
     _compare,
     _extract_metric_series,
     _compute_regressions,
-    _create_run_dir,
     _evaluate_gates,
     _paired_deltas_for_gate,
     _read_sprt_params,
     _run_sprt,
     _resolve_metric_path,
+)
+from temporalci.engine import (
+    _build_sample_rows_with_retention,
+    _create_run_dir,
     _safe_unlink,
 )
 from temporalci.types import GateSpec, GeneratedSample

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
 
 # Re-export shared helpers so existing callers continue to work.
@@ -24,7 +25,7 @@ def pid_exists(pid: int) -> bool:
     """Return ``True`` if a process with *pid* appears to be alive."""
     if pid <= 0:
         return False
-    if os.name == "nt":
+    if sys.platform == "win32":
         try:
             import ctypes
 
@@ -95,7 +96,7 @@ def terminate_pid(pid: int, *, timeout_sec: float = 10.0) -> bool:
             _, alive = psutil.wait_procs(alive, timeout=timeout_sec)
         return not alive
 
-    if os.name == "nt":
+    if sys.platform == "win32":
         return _taskkill(pid)
 
     try:
