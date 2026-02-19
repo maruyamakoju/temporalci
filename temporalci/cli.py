@@ -702,6 +702,34 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Output format: text (default) or json",
     )
 
+    heatmap_cmd = sub.add_parser(
+        "heatmap",
+        help="Generate vegetation detection heatmap overlays for inspection frames",
+    )
+    heatmap_cmd.add_argument(
+        "--frame-dir",
+        required=True,
+        metavar="DIR",
+        help="Directory containing source frames",
+    )
+    heatmap_cmd.add_argument(
+        "--output-dir",
+        required=True,
+        metavar="DIR",
+        help="Output directory for heatmap PNGs",
+    )
+    heatmap_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+    heatmap_cmd.add_argument(
+        "--alpha",
+        type=float,
+        default=0.45,
+        help="Overlay opacity 0-1 (default: 0.45)",
+    )
+
     return parser
 
 
@@ -851,6 +879,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "metrics-show":
         return _cmd_metrics_show(args)
+
+    if args.command == "heatmap":
+        try:
+            from temporalci.heatmap import generate_heatmaps
+
+            results = generate_heatmaps(
+                args.frame_dir,
+                args.output_dir,
+                pattern=args.pattern,
+                overlay_alpha=args.alpha,
+            )
+            for r in results:
+                prox = r["green_ratio_quarter"]
+                cov = r["green_ratio_half"]
+                print(f"  {r['source_frame']:20s}  prox={prox:.4f}  cov={cov:.4f}")
+            print(f"\n{len(results)} heatmaps written to {args.output_dir}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
 
     if args.command == "trend":
         try:
