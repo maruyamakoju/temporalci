@@ -161,6 +161,44 @@ artifacts:
   keep_workdir: false     # used by some official metric backends
 ```
 
+## Diagnostic Report (`report.html`)
+
+Each run writes a `report.html` with:
+
+- **Gate Results** — pass/fail per gate with actual vs target
+- **SPRT Analysis** — per-gate LLR trajectory chart (inline SVG), worst-delta table with prompt/seed lookup, sigma, paired count, threshold distances
+- **Worst Sample Pairs** — which specific prompt + seed degraded the most (resolved from sample_id)
+- **Regression vs Baseline** — delta per metric vs latest passing run, colored by direction
+
+## Trend Report
+
+Generate a cross-run HTML trend report from artifact history:
+
+```bash
+python scripts/trend_report.py \
+  --model-root artifacts/demo-video-model/regression_core/demo_mock_model \
+  --output artifacts/trend_report.html \
+  --last-n 30
+```
+
+This produces a self-contained HTML with:
+
+- Pass/fail strip (one colored cell per run)
+- SVG line chart per metric (green = PASS run, red = FAIL run)
+- Run history table
+
+## Webhook Alerts
+
+Receive a POST notification when a gate or regression fails:
+
+```bash
+temporalci run examples/regression_sprt.yaml \
+  --baseline-mode latest_pass \
+  --webhook-url https://hooks.slack.com/services/...
+```
+
+The payload is JSON with `run_id`, `status`, `gate_failed`, `regression_failed`, `gate_failures` list, and `run_dir`.  Works with Slack incoming webhooks, Discord webhooks, or any HTTP endpoint.
+
 ## Statistical Regression Gate (SPRT)
 
 `method: sprt_regression` adds a sequential hypothesis test on top of the

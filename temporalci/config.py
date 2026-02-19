@@ -381,6 +381,26 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                     raise ConfigError(
                         f"'gates[{i}].params.pairing_mode' must be one of: sample_id, legacy"
                     )
+        # Optional windowed-gate fields
+        window_raw = gate.get("window", 0)
+        try:
+            window = int(window_raw)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"'gates[{i}].window' must be a non-negative integer") from exc
+        if window < 0:
+            raise ConfigError(f"'gates[{i}].window' must be >= 0")
+        min_failures_raw = gate.get("min_failures", window)
+        try:
+            min_failures = int(min_failures_raw)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"'gates[{i}].min_failures' must be a non-negative integer") from exc
+        if min_failures < 0:
+            raise ConfigError(f"'gates[{i}].min_failures' must be >= 0")
+        if window > 0 and min_failures > window:
+            raise ConfigError(
+                f"'gates[{i}].min_failures' ({min_failures}) must be <= window ({window})"
+            )
+
         gates.append(
             GateSpec(
                 metric=metric_path,
@@ -388,6 +408,8 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                 value=gate["value"],
                 method=method,
                 params=params,
+                window=window,
+                min_failures=min_failures,
             )
         )
     return gates

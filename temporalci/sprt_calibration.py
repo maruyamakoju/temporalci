@@ -12,13 +12,14 @@ from typing import Any
 from temporalci import __version__
 from temporalci.config import load_suite
 from temporalci.config import select_model
-from temporalci.engine import _paired_deltas_for_gate
-from temporalci.engine import _read_sprt_params
 from temporalci.engine import run_suite
+from temporalci.gate_eval import _paired_deltas_for_gate
+from temporalci.gate_eval import _read_sprt_params
 from temporalci.sprt import estimate_required_pairs
 from temporalci.types import GateSpec
 from temporalci.types import SuiteSpec
 from temporalci.utils import atomic_write_json
+from temporalci.utils import sample_std as _sample_std
 from temporalci.utils import utc_now_iso
 
 _CALIBRATION_SCHEMA_VERSION = 1
@@ -40,14 +41,6 @@ def _quantile(values: list[float], q: float) -> float | None:
         return ordered[left]
     frac = pos - left
     return ordered[left] + (ordered[right] - ordered[left]) * frac
-
-
-def _sample_std(values: list[float]) -> float:
-    if len(values) < 2:
-        return 0.0
-    avg = mean(values)
-    variance = sum((value - avg) ** 2 for value in values) / max(1, len(values) - 1)
-    return math.sqrt(max(0.0, variance))
 
 
 def _mad_sigma(values: list[float]) -> float | None:
