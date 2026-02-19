@@ -730,6 +730,34 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Overlay opacity 0-1 (default: 0.45)",
     )
 
+    insp_cmd = sub.add_parser(
+        "inspection-report",
+        help="Generate an HTML inspection report with embedded heatmap thumbnails",
+    )
+    insp_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    insp_cmd.add_argument(
+        "--frame-dir",
+        required=True,
+        metavar="DIR",
+        help="Directory containing source frames",
+    )
+    insp_cmd.add_argument(
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Output HTML path (default: <run-dir>/inspection_report.html)",
+    )
+    insp_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+
     return parser
 
 
@@ -879,6 +907,29 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "metrics-show":
         return _cmd_metrics_show(args)
+
+    if args.command == "inspection-report":
+        try:
+            from temporalci.inspection_report import write_inspection_report
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+            output = Path(args.output) if args.output else run_dir / "inspection_report.html"
+            write_inspection_report(
+                output,
+                run_data=run_data,
+                frame_dir=args.frame_dir,
+                pattern=args.pattern,
+            )
+            print(f"inspection report: {output}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
 
     if args.command == "heatmap":
         try:

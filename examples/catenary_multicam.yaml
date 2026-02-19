@@ -1,0 +1,51 @@
+version: 1
+project: "jr-east-catenary"
+suite_name: "multicam-inspection"
+
+# Multi-camera configuration: each camera position has independent
+# adapter params and can run against the same test/metric/gate set.
+# In production, --model selects which camera to evaluate.
+
+models:
+  - name: "side-camera-left"
+    adapter: "frame_archive"
+    params:
+      archive_dir: "./frames/left"
+      camera: "left"
+
+  - name: "side-camera-right"
+    adapter: "frame_archive"
+    params:
+      archive_dir: "./frames/right"
+      camera: "right"
+
+  - name: "upper-camera"
+    adapter: "frame_archive"
+    params:
+      archive_dir: "./frames/upper"
+      camera: "upper"
+
+tests:
+  - id: "vegetation-check"
+    type: "inspection"
+    prompt_source:
+      kind: "directory"
+      path: "./frames/left"
+      pattern: "*.jpg"
+    seeds: [0]
+
+metrics:
+  - name: "catenary_vegetation"
+    params:
+      proximity_threshold: 0.05
+
+# Gate thresholds can be tuned per deployment.
+# Upper camera sees catenary directly → stricter threshold.
+# Side cameras see vegetation at an angle → slightly more permissive.
+gates:
+  - metric: "catenary_vegetation.score"
+    op: ">="
+    value: 0.7
+  - metric: "catenary_vegetation.dims.vegetation_proximity"
+    op: "<="
+    value: 0.15
