@@ -444,10 +444,12 @@ def _render_sprt_gate_card(
         alpha=sprt.get("alpha"),
         beta=sprt.get("beta"),
     )
-    if derived.get("drift_per_pair") is not None:
-        stats.append(("drift/pair", f"{derived['drift_per_pair']:.6f}"))
-    if derived.get("required_pairs_upper") is not None:
-        stats.append(("req pairs", f"{math.ceil(derived['required_pairs_upper'])}"))
+    _dpp = derived.get("drift_per_pair")
+    if _dpp is not None:
+        stats.append(("drift/pair", f"{_dpp:.6f}"))
+    _rpu = derived.get("required_pairs_upper")
+    if _rpu is not None:
+        stats.append(("req pairs", f"{math.ceil(_rpu)}"))
 
     stats_html = "".join(
         f'<span class="stat-pill"><strong>{escape(k)}:</strong> {escape(v)}</span>'
@@ -573,7 +575,7 @@ def _render_samples_section(samples: list[dict[str, Any]], limit: int = 200) -> 
         retained = s.get("artifact_retained", True)
         vid_path = s.get("video_path") or ""
         vid_cell = (
-            f'<span style="font-size:0.78rem;color:#94a3b8">deleted / not retained</span>'
+            '<span style="font-size:0.78rem;color:#94a3b8">deleted / not retained</span>'
             if not retained
             else f'<code style="font-size:0.78rem">{escape(str(vid_path))}</code>'
         )

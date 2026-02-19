@@ -26,7 +26,7 @@ from temporalci.utils import atomic_write_json, read_json_dict
 def _read_tags(model_root: Path) -> dict[str, str]:
     """Load tag → run_id mapping from model_root/tags.json."""
     data = read_json_dict(model_root / "tags.json")
-    return data if data is not None else {}  # type: ignore[return-value]
+    return data if data is not None else {}
 
 
 def _write_tag(model_root: Path, tag: str, run_id: str) -> None:
@@ -34,7 +34,7 @@ def _write_tag(model_root: Path, tag: str, run_id: str) -> None:
     tags = _read_tags(model_root)
     tags[str(tag)] = run_id
     try:
-        atomic_write_json(model_root / "tags.json", tags)  # type: ignore[arg-type]
+        atomic_write_json(model_root / "tags.json", tags)
     except OSError:
         pass
 

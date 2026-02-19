@@ -200,7 +200,10 @@ def _svg_trend_chart(
         else:
             if seg_start is not None and i - seg_start >= 2:
                 seg_vals = [(j, values[j]) for j in range(seg_start, i) if values[j] is not None]
-                pts = " ".join(f"{px(j):.1f},{py(float(val)):.1f}" for j, val in seg_vals)
+                pts = " ".join(
+                    f"{px(j):.1f},{py(float(val)):.1f}"
+                    for j, val in seg_vals if val is not None
+                )
                 parts.append(
                     f'<polyline points="{pts}" fill="none" stroke="{_LINE_COLOR}" '
                     f'stroke-width="2" stroke-linejoin="round"/>'
@@ -209,7 +212,10 @@ def _svg_trend_chart(
     if seg_start is not None:
         seg_vals = [(j, values[j]) for j in range(seg_start, n) if values[j] is not None]
         if len(seg_vals) >= 2:
-            pts = " ".join(f"{px(j):.1f},{py(float(val)):.1f}" for j, val in seg_vals)
+            pts = " ".join(
+                f"{px(j):.1f},{py(float(val)):.1f}"
+                for j, val in seg_vals if val is not None
+            )
             parts.append(
                 f'<polyline points="{pts}" fill="none" stroke="{_LINE_COLOR}" '
                 f'stroke-width="2" stroke-linejoin="round"/>'

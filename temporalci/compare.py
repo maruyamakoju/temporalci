@@ -7,7 +7,6 @@ write_compare_report(path, baseline, candidate)       (writes HTML)
 """
 from __future__ import annotations
 
-import json
 import math
 from html import escape
 from pathlib import Path
@@ -335,7 +334,7 @@ def _delta_cell(delta: float | None) -> str:
         return f'<span class="delta-neg">{delta:+.6f}</span>'
     if delta > 1e-9:
         return f'<span class="delta-pos">{delta:+.6f}</span>'
-    return f'<span class="delta-zero">±0</span>'
+    return '<span class="delta-zero">±0</span>'
 
 
 def _render_gate_changes(gate_changes: list[dict[str, Any]]) -> str:
@@ -406,7 +405,7 @@ def _render_sprt_comparison(gate_changes: list[dict[str, Any]]) -> str:
             + _sprt_row("sigma", "sigma")
             + _sprt_row("upper threshold", "upper_threshold")
             + _sprt_row("lower threshold", "lower_threshold")
-            + f"</tbody></table></div>"
+            + "</tbody></table></div>"
         )
     return "".join(cards)
 
@@ -536,7 +535,6 @@ def write_compare_report(
     b_status = str(cmp["baseline_status"] or "UNKNOWN")
     c_status = str(cmp["candidate_status"] or "UNKNOWN")
 
-    overall_cls = "badge-fail" if c_status == "FAIL" else "badge-pass"
     gate_regressions = cmp["gate_regressions"]
     gate_improvements = cmp["gate_improvements"]
     n_unchanged = len(cmp["gate_changes"]) - len(gate_regressions) - len(gate_improvements)

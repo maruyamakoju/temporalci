@@ -441,7 +441,7 @@ def test_sprt_gate_llr_history_present(tmp_path: Path) -> None:
 
     # Baseline
     baseline_suite = load_suite(suite_path)
-    baseline_result = run_suite(
+    run_suite(
         suite=baseline_suite,
         artifacts_dir=tmp_path / "artifacts",
         baseline_mode="none",
@@ -1643,8 +1643,6 @@ def test_adapter_timeout_skips_slow_sample(tmp_path: Path) -> None:
     suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1", "p2"], threshold=0.0)
     suite = load_suite(suite_path)
 
-    original_run_metric = None
-
     def _slow_generate(**kwargs):
         time.sleep(5.0)  # will be timed out
         raise RuntimeError("should not be reached")
@@ -1659,7 +1657,6 @@ def test_adapter_timeout_skips_slow_sample(tmp_path: Path) -> None:
 
     # Use a very short timeout to trigger skipping
     # We patch the adapter inside _generate_samples via mocking build_adapter
-    import temporalci.adapters as _adapters_mod
 
     class _SlowAdapter:
         def generate(self, **kwargs):

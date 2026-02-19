@@ -4,31 +4,21 @@ import hashlib
 import json
 import urllib.request
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any
 
 from temporalci.adapters import build_adapter
 from temporalci.baseline import (
-    _average_metrics_dicts,
     _load_previous_run,
-    _read_tags,
     _validate_baseline_mode,
     _write_tag,
 )
 from temporalci.config import select_model
 from temporalci.gate_eval import (
     _apply_windowed_gates,
-    _build_legacy_series_key,
-    _compare,
     _compute_regressions,
     _evaluate_gates,
-    _extract_metric_series,
     _load_recent_runs,
-    _paired_deltas_for_gate,
-    _read_sprt_params,
-    _resolve_metric_path,
-    _run_sprt,
-    _sample_std,
-    _split_metric_path,
 )
 from temporalci.trend import load_model_runs, write_trend_report
 from temporalci.badge import write_badge_svg
@@ -36,7 +26,7 @@ from temporalci.compare import write_compare_report
 from temporalci.index import write_suite_index
 from temporalci.metrics import run_metric
 from temporalci.report import write_html_report
-from temporalci.types import GeneratedSample, RunResult, SuiteSpec
+from temporalci.types import GeneratedSample, RunResult, SuiteSpec, TestSpec
 from temporalci.utils import (
     atomic_write_json,
     normalize_prompt,
@@ -184,7 +174,7 @@ def _build_sample_id(
     return hashlib.sha1(encoded.encode("utf-8")).hexdigest()[:16]
 
 
-def _iter_jobs(suite: SuiteSpec):
+def _iter_jobs(suite: SuiteSpec) -> Iterator[tuple[TestSpec, str, int]]:
     """Yield (test, prompt, seed) tuples for all combinations in the suite."""
     for test in suite.tests:
         for prompt in test.prompts:
@@ -198,7 +188,7 @@ def _generate_samples(
     adapter: Any,
     videos_dir: Path,
     sample_limit: int | None = None,
-    progress_callback=None,
+    progress_callback: Any = None,
     workers: int = 1,
     retry: int = 1,
     inter_sample_delay: float = 0.0,
@@ -259,7 +249,7 @@ def _generate_samples(
             effective_video_cfg["encode"] = suite.artifacts["encode"]
         for _attempt in range(max(retry, 1)):
             try:
-                sample = adapter.generate(
+                sample: GeneratedSample = adapter.generate(
                     test_id=test.id,
                     prompt=prompt,
                     seed=seed,
@@ -437,7 +427,7 @@ def run_suite(
     webhook_url: str | None = None,
     sample_limit: int | None = None,
     tag: str | None = None,
-    progress_callback=None,
+    progress_callback: Any = None,
     workers: int = 1,
     retry: int = 1,
     inter_sample_delay: float = 0.0,

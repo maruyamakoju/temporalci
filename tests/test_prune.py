@@ -54,15 +54,15 @@ def test_prune_deletes_oldest_runs(tmp_path: Path) -> None:
 def test_prune_rewrites_jsonl(tmp_path: Path) -> None:
     model_root = _make_model_root(tmp_path, n_runs=4)
     all_ids_before = [
-        json.loads(l)["run_id"]
-        for l in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
-        if l.strip()
+        json.loads(ln)["run_id"]
+        for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
     ]
     prune_model_runs(model_root, keep_last=2)
     remaining = [
-        json.loads(l)["run_id"]
-        for l in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
-        if l.strip()
+        json.loads(ln)["run_id"]
+        for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
     ]
     # Most recent 2 are kept
     assert remaining == all_ids_before[-2:]
@@ -85,7 +85,7 @@ def test_prune_dry_run_does_not_delete(tmp_path: Path) -> None:
     assert result["deleted"] == 2  # would-be deleted count still reported
     # jsonl not rewritten
     entries = [
-        l for l in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()
+        ln for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if ln.strip()
     ]
     assert len(entries) == 4
 
@@ -132,9 +132,9 @@ def test_prune_keep_last_zero_raises(tmp_path: Path) -> None:
 def test_prune_actual_dirs_deleted(tmp_path: Path) -> None:
     model_root = _make_model_root(tmp_path, n_runs=5)
     all_run_ids = [
-        json.loads(l)["run_id"]
-        for l in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
-        if l.strip()
+        json.loads(ln)["run_id"]
+        for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
     ]
     prune_model_runs(model_root, keep_last=2)
     deleted_ids = all_run_ids[:-2]

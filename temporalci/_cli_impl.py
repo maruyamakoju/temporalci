@@ -10,8 +10,8 @@ import math
 from pathlib import Path
 from typing import Any
 
-from temporalci.compare import compare_runs, format_compare_text, write_compare_report
-from temporalci.trend import load_model_runs, write_trend_report
+from temporalci.compare import format_compare_text, write_compare_report
+from temporalci.trend import load_model_runs
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +572,7 @@ def _cmd_compare(args: Any) -> int:
                 return 1
             candidate_run = runs[-1]
             candidate_id = candidate_run.get("run_id")
-            baseline_run: dict[str, Any] | None = None
+            baseline_run = None
             for run in reversed(runs[:-1]):
                 if run.get("status") == "PASS":
                     baseline_run = run
@@ -637,7 +637,7 @@ def _prune_one(model_root: Path, keep_last: int, dry_run: bool, label: str = "")
         f"{prefix}{tag}kept={result['kept']}  deleted={result['deleted']}"
         f"  skipped={result['skipped']}  freed={mb:.2f} MB"
     )
-    return result["bytes_freed"]
+    return int(result["bytes_freed"])
 
 
 def _cmd_prune(args: Any) -> int:

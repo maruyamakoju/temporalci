@@ -1041,7 +1041,7 @@ def test_cli_export_jsonl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
         "--format", "jsonl",
     ])
     assert result == 0
-    lines = [l for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2
 
 
@@ -2119,7 +2119,7 @@ def test_cli_repair_index_rebuilds_jsonl(
     assert result == 0
     index = model_root / "runs.jsonl"
     assert index.exists()
-    lines = [l for l in index.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in index.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 3
     for line in lines:
         obj = json.loads(line)
@@ -2136,7 +2136,7 @@ def test_cli_repair_index_overwrites_existing_jsonl(
     stale.write_text('{"run_id": "stale"}\n' * 10, encoding="utf-8")
     result = main(["repair-index", "--model-root", str(model_root)])
     assert result == 0
-    lines = [l for l in stale.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in stale.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2
 
 
@@ -3039,7 +3039,6 @@ def test_cli_ci_flag_suppresses_progress(tmp_path: Path) -> None:
     """--ci flag suppresses progress callback (use_progress=False)."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    callbacks: list = []
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
         main([
@@ -3109,7 +3108,6 @@ def test_cli_watch_runs_multiple_iterations(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """--watch N runs suite repeatedly; KeyboardInterrupt stops the loop gracefully."""
-    import time
 
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)

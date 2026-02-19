@@ -4,15 +4,13 @@ import argparse
 import json
 import os as _os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from temporalci.adapters import available_adapters
-from temporalci.compare import compare_runs, format_compare_text, write_compare_report
 from temporalci.constants import BASELINE_MODES
 from temporalci.config import SuiteValidationError  # ConfigError alias
 from temporalci.config import load_suite
 from temporalci.engine import run_suite
-from temporalci.export import export_runs
 from temporalci.metrics import available_metrics
 from temporalci.sprt_calibration import sprt_main
 from temporalci.trend import load_model_runs, write_trend_report
@@ -998,7 +996,7 @@ def main(argv: list[str] | None = None) -> int:
                 env=env,
                 adapter_timeout=adapter_timeout,
             )
-            return mname, r, None
+            return mname, cast("dict[str, Any]", r), None
         except SuiteValidationError as exc:
             return mname, None, exc
         except Exception as exc:  # noqa: BLE001
@@ -1099,9 +1097,9 @@ def main(argv: list[str] | None = None) -> int:
         if multi:
             print("\n── summary ──")
             n_pass = 0
-            for mname, res, exc in results:
-                if exc is not None:
-                    print(f"  {mname}: ERROR  {exc}")
+            for mname, res, err in results:
+                if err is not None:
+                    print(f"  {mname}: ERROR  {err}")
                 elif res is not None and res.get("status") == "PASS":
                     n_pass += 1
                     print(f"  {mname}: PASS  samples={res['sample_count']}")

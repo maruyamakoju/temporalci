@@ -174,7 +174,7 @@ def test_export_jsonl_each_line_valid_json(tmp_path: Path) -> None:
     model_root = _make_model_root(tmp_path, n_runs=3)
     out = tmp_path / "runs.jsonl"
     export_runs(model_root, out, fmt="jsonl")
-    lines = [l for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 3
     for line in lines:
         obj = json.loads(line)
@@ -317,7 +317,7 @@ def test_export_suite_jsonl(tmp_path: Path) -> None:
     out = tmp_path / "all.jsonl"
     n = export_suite_runs(suite_root, out, fmt="jsonl")
     assert n == 2
-    lines = [l for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2
     obj = json.loads(lines[0])
     assert "model_name" in obj

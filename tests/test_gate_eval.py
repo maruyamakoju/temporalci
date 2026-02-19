@@ -26,7 +26,6 @@ from temporalci.gate_eval import (
     _run_sprt,
     _split_metric_path,
 )
-from temporalci.types import GateSpec
 
 
 # ---------------------------------------------------------------------------
