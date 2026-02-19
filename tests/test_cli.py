@@ -1463,9 +1463,12 @@ def test_cli_run_all_models_exit_2_when_any_fail(tmp_path: Path) -> None:
 
 
 def test_cli_run_progress_shown_by_default(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Progress '[1/1]' line is printed when --no-progress is not given."""
+    # Ensure CI env vars are unset so progress callback is enabled
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     main(
