@@ -94,3 +94,36 @@ class TestFrameArchiveAdapter:
         adapter = _make_adapter({"archive_dir": str(archive), "extension": "png"})
         with pytest.raises(AdapterError, match="frame not found"):
             _generate(adapter, "f", tmp_path / "out")
+
+    def test_sidecar_json_loaded(self, tmp_path: Path) -> None:
+        import json
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "f.jpg").write_bytes(b"\xff")
+        (archive / "f.json").write_text(
+            json.dumps({"lat": 35.68, "lon": 139.77, "km": 12.3}),
+            encoding="utf-8",
+        )
+        adapter = _make_adapter({"archive_dir": str(archive)})
+        sample = _generate(adapter, "f", tmp_path / "out")
+        assert sample.metadata["lat"] == 35.68
+        assert sample.metadata["lon"] == 139.77
+        assert sample.metadata["km"] == 12.3
+
+    def test_sidecar_missing_is_fine(self, tmp_path: Path) -> None:
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "f.jpg").write_bytes(b"\xff")
+        adapter = _make_adapter({"archive_dir": str(archive)})
+        sample = _generate(adapter, "f", tmp_path / "out")
+        assert "lat" not in sample.metadata
+
+    def test_sidecar_invalid_json_ignored(self, tmp_path: Path) -> None:
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "f.jpg").write_bytes(b"\xff")
+        (archive / "f.json").write_text("not valid json {{{", encoding="utf-8")
+        adapter = _make_adapter({"archive_dir": str(archive)})
+        sample = _generate(adapter, "f", tmp_path / "out")
+        assert sample.metadata["adapter"] == "frame_archive"
