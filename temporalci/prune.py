@@ -4,6 +4,7 @@ Public API
 ----------
 prune_model_runs(model_root, keep_last, dry_run=False)  ->  dict
 """
+
 from __future__ import annotations
 
 import json

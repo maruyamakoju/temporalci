@@ -162,9 +162,7 @@ def _resolve_standard_videos_path(*, params: dict[str, Any]) -> tuple[Path, str]
             "Set params.videos_path explicitly or create videos under the auto root."
         )
     max_depth = as_int(params.get("videos_auto_max_depth", 8), default=8, minimum=1)
-    max_candidates = as_int(
-        params.get("videos_auto_max_candidates", 256), default=256, minimum=1
-    )
+    max_candidates = as_int(params.get("videos_auto_max_candidates", 256), default=256, minimum=1)
     candidates = _discover_video_dirs(
         root=auto_root, max_depth=max_depth, max_candidates=max_candidates
     )
@@ -381,7 +379,9 @@ def _parse_vbench_results(
 # ---------------------------------------------------------------------------
 
 
-def evaluate(samples: list[GeneratedSample], params: dict[str, Any] | None = None) -> dict[str, Any]:
+def evaluate(
+    samples: list[GeneratedSample], params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Run VBench official evaluation on *samples*."""
     params = params or {}
 

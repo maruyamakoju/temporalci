@@ -4,6 +4,7 @@ Covers _build_parser() and main() with 'serve' and 'worker' subcommands.
 Uses monkeypatching so no real uvicorn or CoordinatorWorker connections
 are made during testing.
 """
+
 from __future__ import annotations
 
 import sys
@@ -48,12 +49,17 @@ def test_build_parser_worker_defaults() -> None:
 
 def test_build_parser_worker_custom_args() -> None:
     parser = _build_parser()
-    args = parser.parse_args([
-        "worker",
-        "--coordinator-url", "http://myhost:9000",
-        "--worker-id", "w42",
-        "--poll-interval-sec", "5.0",
-    ])
+    args = parser.parse_args(
+        [
+            "worker",
+            "--coordinator-url",
+            "http://myhost:9000",
+            "--worker-id",
+            "w42",
+            "--poll-interval-sec",
+            "5.0",
+        ]
+    )
     assert args.coordinator_url == "http://myhost:9000"
     assert args.worker_id == "w42"
     assert args.poll_interval_sec == pytest.approx(5.0)

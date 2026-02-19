@@ -114,7 +114,11 @@ def derive_sprt_metrics(
     alpha_f = to_float(alpha)
     beta_f = to_float(beta)
 
-    if (upper_threshold_f is None or lower_threshold_f is None) and alpha_f is not None and beta_f is not None:
+    if (
+        (upper_threshold_f is None or lower_threshold_f is None)
+        and alpha_f is not None
+        and beta_f is not None
+    ):
         thresholds = sprt_thresholds(alpha=alpha_f, beta=beta_f)
         if thresholds is not None:
             upper_threshold_f, lower_threshold_f = thresholds

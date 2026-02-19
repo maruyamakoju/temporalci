@@ -23,6 +23,7 @@ SuiteValidationError = ConfigError
 # Small validation helpers
 # ---------------------------------------------------------------------------
 
+
 def _require_dict(value: Any, field_name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigError(f"'{field_name}' must be a mapping")
@@ -48,9 +49,7 @@ def _coerce_int_list(values: list[Any], field_name: str) -> list[int]:
         try:
             coerced.append(int(item))
         except (TypeError, ValueError) as exc:
-            raise ConfigError(
-                f"'{field_name}[{idx}]' must be an integer"
-            ) from exc
+            raise ConfigError(f"'{field_name}[{idx}]' must be an integer") from exc
     if not coerced:
         raise ConfigError(f"'{field_name}' cannot be empty")
     return coerced
@@ -74,6 +73,7 @@ def _coerce_str_list(values: list[Any], field_name: str) -> list[str]:
 # Init-image field normalization
 # ---------------------------------------------------------------------------
 
+
 def _normalize_init_image_fields(
     *,
     mapping: dict[str, Any],
@@ -91,9 +91,7 @@ def _normalize_init_image_fields(
         resolved: list[str] = []
         for idx, item in enumerate(init_images):
             if not isinstance(item, str):
-                raise ConfigError(
-                    f"'{field_prefix}.init_images[{idx}]' must be a string path"
-                )
+                raise ConfigError(f"'{field_prefix}.init_images[{idx}]' must be a string path")
             value = item.strip()
             if not value:
                 continue
@@ -143,6 +141,7 @@ def _parse_artifacts(raw: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Suite loading
 # ---------------------------------------------------------------------------
+
 
 def load_suite(path: str | Path) -> SuiteSpec:
     """Load and validate a suite YAML file, returning a :class:`SuiteSpec`."""
@@ -271,9 +270,7 @@ def _collect_prompts(test: dict[str, Any], index: int, suite_dir: Path) -> list[
 
     prompts = dedupe_prompts(prompts)
     if not prompts:
-        raise ConfigError(
-            f"'tests[{index}]' requires non-empty 'prompts' or valid 'prompt_source'"
-        )
+        raise ConfigError(f"'tests[{index}]' requires non-empty 'prompts' or valid 'prompt_source'")
     return prompts
 
 
@@ -330,15 +327,12 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                         f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]"
                     ) from exc
                 if not (0.0 < min_paired_ratio <= 1.0):
-                    raise ConfigError(
-                        f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]"
-                    )
+                    raise ConfigError(f"'gates[{i}].params.min_paired_ratio' must be in (0, 1]")
             if "pairing_mismatch" in params:
                 pairing_mismatch = str(params["pairing_mismatch"]).strip().lower()
                 if pairing_mismatch not in {"fail", "pass", "skip"}:
                     raise ConfigError(
-                        f"'gates[{i}].params.pairing_mismatch' must be one of: "
-                        "fail, pass, skip"
+                        f"'gates[{i}].params.pairing_mismatch' must be one of: fail, pass, skip"
                     )
             sigma_mode = "estimate"
             if "sigma_mode" in params:
@@ -355,9 +349,7 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
                         f"'gates[{i}].params.sigma' must be a positive number"
                     ) from exc
                 if sigma <= 0.0:
-                    raise ConfigError(
-                        f"'gates[{i}].params.sigma' must be a positive number"
-                    )
+                    raise ConfigError(f"'gates[{i}].params.sigma' must be a positive number")
             if sigma_mode == "fixed" and "sigma" not in params:
                 raise ConfigError(
                     f"'gates[{i}].params.sigma' is required when "
@@ -418,6 +410,7 @@ def _parse_gates(root: dict[str, Any]) -> list[GateSpec]:
 # ---------------------------------------------------------------------------
 # Model selection
 # ---------------------------------------------------------------------------
+
 
 def select_model(suite: SuiteSpec, name: str | None) -> ModelSpec:
     """Select a model from *suite* by *name*, defaulting to the first."""

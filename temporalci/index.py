@@ -4,6 +4,7 @@ Scans a suite root directory (artifacts/project/suite/) for model
 subdirectories and writes index.html summarising each model's latest
 run status, recent pass/fail strip, and aggregate metrics.
 """
+
 from __future__ import annotations
 
 import json
@@ -203,9 +204,7 @@ def _render_model_card(model_name: str, model_root: Path, suite_root: Path) -> s
     metric_rows = "".join(
         f"<tr><td>{escape(k)}</td><td>{v:.4f}</td></tr>" for k, v in sorted_metrics
     )
-    metric_html = (
-        f'<table class="metrics-table">{metric_rows}</table>' if metric_rows else ""
-    )
+    metric_html = f'<table class="metrics-table">{metric_rows}</table>' if metric_rows else ""
 
     strip_svg = _svg_mini_strip(statuses)
 
@@ -247,9 +246,11 @@ def write_suite_index(
     models = discover_models(suite_root)
 
     if models:
-        cards_html = '<div class="grid">' + "".join(
-            _render_model_card(name, root, suite_root) for name, root in models
-        ) + "</div>"
+        cards_html = (
+            '<div class="grid">'
+            + "".join(_render_model_card(name, root, suite_root) for name, root in models)
+            + "</div>"
+        )
     else:
         cards_html = '<p class="no-models">No model runs found yet.</p>'
 
@@ -269,7 +270,7 @@ def write_suite_index(
   <h1>TemporalCI</h1>
   <p class="subtitle">
     {escape(project)} / {escape(suite_name)}
-    &nbsp;·&nbsp; {len(models)} model{'s' if len(models) != 1 else ''}
+    &nbsp;·&nbsp; {len(models)} model{"s" if len(models) != 1 else ""}
     &nbsp;·&nbsp; generated {escape(generated_at)}
   </p>
   {cards_html}

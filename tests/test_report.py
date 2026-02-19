@@ -18,7 +18,15 @@ def _minimal_payload() -> dict:
         "status": "PASS",
         "sample_count": 0,
         "metrics": {"vbench_temporal": {"score": 0.8}},
-        "gates": [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.5, "actual": 0.8, "passed": True}],
+        "gates": [
+            {
+                "metric": "vbench_temporal.score",
+                "op": ">=",
+                "value": 0.5,
+                "actual": 0.8,
+                "passed": True,
+            }
+        ],
         "regressions": [],
         "samples": [],
     }

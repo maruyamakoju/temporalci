@@ -64,6 +64,7 @@ _CSS = """
 # SVG: LLR trajectory chart
 # ---------------------------------------------------------------------------
 
+
 def _svg_llr_chart(
     *,
     llr_history: list[float],
@@ -160,7 +161,9 @@ def _svg_llr_chart(
 
     # LLR path
     pts = " ".join(f"{px(i + 1):.1f},{py(v):.1f}" for i, v in enumerate(llr_history))
-    parts.append(f'<polyline points="{pts}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round"/>')
+    parts.append(
+        f'<polyline points="{pts}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round"/>'
+    )
 
     # crossing point
     if crossed_at is not None and 1 <= crossed_at <= n:
@@ -210,6 +213,7 @@ def _svg_llr_chart(
 # SVG: mini trend sparkline (for metrics table)
 # ---------------------------------------------------------------------------
 
+
 def _svg_sparkline(values: list[float], *, width: int = 80, height: int = 28) -> str:
     finite = [v for v in values if math.isfinite(v)]
     if len(finite) < 2:
@@ -233,6 +237,7 @@ def _svg_sparkline(values: list[float], *, width: int = 80, height: int = 28) ->
 # ---------------------------------------------------------------------------
 # Sample lookup helper
 # ---------------------------------------------------------------------------
+
 
 def _build_sample_lookup(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     lookup: dict[str, dict[str, Any]] = {}
@@ -273,6 +278,7 @@ def _delta_cell(delta: float) -> str:
 # Section: Metrics
 # ---------------------------------------------------------------------------
 
+
 def _render_metrics_section(metrics: dict[str, Any]) -> str:
     if not metrics:
         return '<p class="no-data">No metrics.</p>'
@@ -286,7 +292,9 @@ def _render_metrics_section(metrics: dict[str, Any]) -> str:
             )
             continue
         score = payload.get("score")
-        score_str = f"{score:.6f}" if isinstance(score, float) else str(score) if score is not None else "—"
+        score_str = (
+            f"{score:.6f}" if isinstance(score, float) else str(score) if score is not None else "—"
+        )
         dims = payload.get("dims")
         dims_str = ""
         if isinstance(dims, dict):
@@ -305,14 +313,15 @@ def _render_metrics_section(metrics: dict[str, Any]) -> str:
         )
 
     return (
-        '<table><thead><tr><th>Metric</th><th>Score</th><th>Dimensions</th></tr></thead>'
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        "<table><thead><tr><th>Metric</th><th>Score</th><th>Dimensions</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
 # ---------------------------------------------------------------------------
 # Section: Gate summary
 # ---------------------------------------------------------------------------
+
 
 def _render_gates_section(gates: list[dict[str, Any]]) -> str:
     if not gates:
@@ -321,7 +330,9 @@ def _render_gates_section(gates: list[dict[str, Any]]) -> str:
     rows: list[str] = []
     for gate in gates:
         status = gate.get("passed", False)
-        tag = '<span class="tag-pass">PASS</span>' if status else '<span class="tag-fail">FAIL</span>'
+        tag = (
+            '<span class="tag-pass">PASS</span>' if status else '<span class="tag-fail">FAIL</span>'
+        )
         method = gate.get("method", "threshold")
         method_badge = (
             '<span class="tag-warn" style="font-size:0.72rem">SPRT</span> '
@@ -329,7 +340,9 @@ def _render_gates_section(gates: list[dict[str, Any]]) -> str:
             else ""
         )
         error = gate.get("error", "")
-        error_cell = f'<span style="color:#b91c1c;font-size:0.8rem">{escape(error)}</span>' if error else ""
+        error_cell = (
+            f'<span style="color:#b91c1c;font-size:0.8rem">{escape(error)}</span>' if error else ""
+        )
         rows.append(
             f"<tr>"
             f"<td><code>{escape(str(gate.get('metric', '')))}</code></td>"
@@ -342,16 +355,17 @@ def _render_gates_section(gates: list[dict[str, Any]]) -> str:
         )
 
     return (
-        '<table><thead><tr>'
-        '<th>Metric</th><th>Op</th><th>Target</th><th>Actual</th><th>Status</th><th>Error</th>'
-        '</tr></thead>'
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        "<table><thead><tr>"
+        "<th>Metric</th><th>Op</th><th>Target</th><th>Actual</th><th>Status</th><th>Error</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
 # ---------------------------------------------------------------------------
 # Section: SPRT analysis
 # ---------------------------------------------------------------------------
+
 
 def _render_worst_deltas_table(
     worst_deltas: list[dict[str, Any]],
@@ -383,7 +397,7 @@ def _render_worst_deltas_table(
         "<table><thead><tr>"
         "<th>Sample (prompt / seed)</th><th>Baseline</th><th>Current</th><th>Delta</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
@@ -485,9 +499,8 @@ def _render_sprt_gate_card(
             worst_deltas = raw_wd
     worst_html = ""
     if worst_deltas:
-        worst_html = (
-            "<h4>Worst Sample Pairs (by delta)</h4>"
-            + _render_worst_deltas_table(worst_deltas, sample_lookup)
+        worst_html = "<h4>Worst Sample Pairs (by delta)</h4>" + _render_worst_deltas_table(
+            worst_deltas, sample_lookup
         )
 
     # Reason / policy note
@@ -496,9 +509,13 @@ def _render_sprt_gate_card(
     if reason:
         reason_html = (
             f'<p style="font-size:0.82rem;color:#92400e;margin:8px 0 0">'
-            f'⚠ reason: <strong>{escape(reason)}</strong>'
+            f"⚠ reason: <strong>{escape(reason)}</strong>"
         )
-        for policy_key in ("pairing_mismatch_policy", "baseline_missing_policy", "inconclusive_policy"):
+        for policy_key in (
+            "pairing_mismatch_policy",
+            "baseline_missing_policy",
+            "inconclusive_policy",
+        ):
             if sprt.get(policy_key):
                 reason_html += f" &nbsp;·&nbsp; {escape(policy_key)}: <strong>{escape(str(sprt[policy_key]))}</strong>"
         reason_html += "</p>"
@@ -532,6 +549,7 @@ def _render_sprt_section(
 # Section: Regression
 # ---------------------------------------------------------------------------
 
+
 def _render_regressions_section(regressions: list[dict[str, Any]]) -> str:
     if not regressions:
         return '<p class="no-data">No baseline available or no directional gates.</p>'
@@ -539,7 +557,11 @@ def _render_regressions_section(regressions: list[dict[str, Any]]) -> str:
     rows: list[str] = []
     for item in regressions:
         regressed = item.get("regressed", False)
-        tag = '<span class="tag-fail">REGRESSED</span>' if regressed else '<span class="tag-pass">OK</span>'
+        tag = (
+            '<span class="tag-fail">REGRESSED</span>'
+            if regressed
+            else '<span class="tag-pass">OK</span>'
+        )
         delta = item.get("delta")
         delta_cell = _delta_cell(float(delta)) if isinstance(delta, (int, float)) else str(delta)
         rows.append(
@@ -558,13 +580,14 @@ def _render_regressions_section(regressions: list[dict[str, Any]]) -> str:
         "<th>Metric</th><th>Baseline</th><th>Current</th>"
         "<th>Delta</th><th>Direction</th><th>Status</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
 # ---------------------------------------------------------------------------
 # Section: Samples
 # ---------------------------------------------------------------------------
+
 
 def _render_samples_section(samples: list[dict[str, Any]], limit: int = 200) -> str:
     if not samples:
@@ -598,14 +621,14 @@ def _render_samples_section(samples: list[dict[str, Any]], limit: int = 200) -> 
         "<table><thead><tr>"
         "<th>Test ID</th><th>Seed</th><th>Prompt</th><th>Video</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
-        + overflow
+        f"<tbody>{''.join(rows)}</tbody></table>" + overflow
     )
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def write_html_report(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -634,16 +657,18 @@ def write_html_report(path: Path, payload: dict[str, Any]) -> None:
             f"{escape(str(value) if value is not None else '—')}</div>"
         )
 
-    meta_html = "".join([
-        _meta("Run ID", payload.get("run_id")),
-        _meta("Project", payload.get("project")),
-        _meta("Suite", payload.get("suite_name")),
-        _meta("Model", payload.get("model_name")),
-        _meta("Timestamp (UTC)", payload.get("timestamp_utc")),
-        _meta("Baseline Run", payload.get("baseline_run_id")),
-        _meta("Baseline Mode", payload.get("baseline_mode")),
-        _meta("Samples", payload.get("sample_count")),
-    ])
+    meta_html = "".join(
+        [
+            _meta("Run ID", payload.get("run_id")),
+            _meta("Project", payload.get("project")),
+            _meta("Suite", payload.get("suite_name")),
+            _meta("Model", payload.get("model_name")),
+            _meta("Timestamp (UTC)", payload.get("timestamp_utc")),
+            _meta("Baseline Run", payload.get("baseline_run_id")),
+            _meta("Baseline Mode", payload.get("baseline_mode")),
+            _meta("Samples", payload.get("sample_count")),
+        ]
+    )
 
     html = f"""<!doctype html>
 <html lang="en">

@@ -3,6 +3,7 @@
 Reads run history from a model artifact directory and generates an HTML
 trend report showing quality metrics over time.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,14 +62,16 @@ def load_model_runs(model_root: Path, *, last_n: int = 30) -> list[dict[str, Any
             runs.append(payload)
         else:
             # Minimal stub from runs.jsonl
-            runs.append({
-                "run_id": run_id,
-                "status": entry.get("status", "UNKNOWN"),
-                "timestamp_utc": entry.get("timestamp_utc", ""),
-                "sample_count": entry.get("sample_count", 0),
-                "metrics": {},
-                "gates": [],
-            })
+            runs.append(
+                {
+                    "run_id": run_id,
+                    "status": entry.get("status", "UNKNOWN"),
+                    "timestamp_utc": entry.get("timestamp_utc", ""),
+                    "sample_count": entry.get("sample_count", 0),
+                    "metrics": {},
+                    "gates": [],
+                }
+            )
     return runs
 
 
@@ -95,7 +98,11 @@ def _extract_metric_series(
         metrics = run.get("metrics") or {}
         try:
             val = _resolve_dotted(metrics, metric_path)
-            if isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(float(val)):
+            if (
+                isinstance(val, (int, float))
+                and not isinstance(val, bool)
+                and math.isfinite(float(val))
+            ):
                 values.append(float(val))
             else:
                 values.append(None)
@@ -201,8 +208,7 @@ def _svg_trend_chart(
             if seg_start is not None and i - seg_start >= 2:
                 seg_vals = [(j, values[j]) for j in range(seg_start, i) if values[j] is not None]
                 pts = " ".join(
-                    f"{px(j):.1f},{py(float(val)):.1f}"
-                    for j, val in seg_vals if val is not None
+                    f"{px(j):.1f},{py(float(val)):.1f}" for j, val in seg_vals if val is not None
                 )
                 parts.append(
                     f'<polyline points="{pts}" fill="none" stroke="{_LINE_COLOR}" '
@@ -213,8 +219,7 @@ def _svg_trend_chart(
         seg_vals = [(j, values[j]) for j in range(seg_start, n) if values[j] is not None]
         if len(seg_vals) >= 2:
             pts = " ".join(
-                f"{px(j):.1f},{py(float(val)):.1f}"
-                for j, val in seg_vals if val is not None
+                f"{px(j):.1f},{py(float(val)):.1f}" for j, val in seg_vals if val is not None
             )
             parts.append(
                 f'<polyline points="{pts}" fill="none" stroke="{_LINE_COLOR}" '
@@ -230,7 +235,7 @@ def _svg_trend_chart(
         parts.append(
             f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" '
             f'fill="{dot_color}" stroke="#fff" stroke-width="1.5">'
-            f'<title>{escape(status)} run #{i + 1}: {v:.6f}</title>'
+            f"<title>{escape(status)} run #{i + 1}: {v:.6f}</title>"
             f"</circle>"
         )
 
@@ -275,6 +280,7 @@ def _svg_trend_chart(
 # Pass/fail history strip
 # ---------------------------------------------------------------------------
 
+
 def _svg_status_strip(statuses: list[str], *, width: int = 700, height: int = 28) -> str:
     if not statuses:
         return ""
@@ -286,7 +292,7 @@ def _svg_status_strip(statuses: list[str], *, width: int = 700, height: int = 28
         x = i * cell_w
         parts.append(
             f'<rect x="{x:.1f}" y="0" width="{cell_w:.1f}" height="{height}" fill="{color}">'
-            f'<title>Run #{i + 1}: {escape(s)}</title>'
+            f"<title>Run #{i + 1}: {escape(s)}</title>"
             f"</rect>"
         )
     inner = "\n  ".join(parts)
@@ -378,7 +384,7 @@ def write_trend_report(
         )
     history_table = (
         "<table><thead><tr><th>#</th><th>Run ID</th><th>Timestamp</th><th>Status</th><th>Samples</th></tr></thead>"
-        f'<tbody>{"".join(table_rows)}</tbody></table>'
+        f"<tbody>{''.join(table_rows)}</tbody></table>"
     )
 
     # Metric charts
@@ -401,7 +407,7 @@ def write_trend_report(
         delta_color = "#15803d" if delta >= 0 else "#b91c1c"
         chart_sections.append(
             f'<div class="chart-card">'
-            f'<h3><code>{escape(mp)}</code>'
+            f"<h3><code>{escape(mp)}</code>"
             f' &nbsp;<span style="font-size:0.82rem;color:{delta_color};font-weight:600">{sign}{delta:.4f}</span>'
             f' <span style="font-size:0.78rem;color:#94a3b8;font-weight:400">vs first run</span></h3>'
             f"{chart_svg}"
@@ -412,7 +418,11 @@ def write_trend_report(
             f"</div>"
         )
 
-    charts_html = "".join(chart_sections) if chart_sections else '<p style="color:#94a3b8">No scalar metrics found.</p>'
+    charts_html = (
+        "".join(chart_sections)
+        if chart_sections
+        else '<p style="color:#94a3b8">No scalar metrics found.</p>'
+    )
 
     html = f"""<!doctype html>
 <html lang="en">

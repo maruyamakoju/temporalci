@@ -74,6 +74,7 @@ def _capture_git_metadata() -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         return {}
 
+
 # ---------------------------------------------------------------------------
 # Run directory helpers
 # ---------------------------------------------------------------------------
@@ -290,7 +291,9 @@ def _generate_samples(
         finished = _done.wait(timeout=adapter_timeout)
         return _result[0] if finished else None
 
-    _dispatch = _run_one_timed if (adapter_timeout is not None and adapter_timeout > 0) else _run_one
+    _dispatch = (
+        _run_one_timed if (adapter_timeout is not None and adapter_timeout > 0) else _run_one
+    )
 
     if workers <= 1:
         raw: list[GeneratedSample | None] = [
@@ -374,8 +377,12 @@ def _maybe_dispatch_webhook(
         {
             "state": new_state,
             "last_run_id": run_id,
-            "last_change_run_id": run_id if should_dispatch else alert_state.get("last_change_run_id"),
-            "last_change_timestamp": timestamp if should_dispatch else alert_state.get("last_change_timestamp"),
+            "last_change_run_id": run_id
+            if should_dispatch
+            else alert_state.get("last_change_run_id"),
+            "last_change_timestamp": timestamp
+            if should_dispatch
+            else alert_state.get("last_change_timestamp"),
         },
     )
     if should_dispatch:
@@ -633,18 +640,20 @@ def run_suite(
             "run_dir": str(run_dir),
             "gate_failures": [
                 {k: v for k, v in g.items() if k not in ("sprt", "llr_history")}
-                for g in gates if not g.get("passed")
+                for g in gates
+                if not g.get("passed")
             ],
-            "top_regressions": [
-                r for r in regressions if r.get("regressed")
-            ][:5],
+            "top_regressions": [r for r in regressions if r.get("regressed")][:5],
         }
         try:
             if notify_on == "always":
-                _dispatch_webhook(webhook_url, {
-                    **_wh_payload,
-                    "event_type": "failure" if status != "PASS" else "pass",
-                })
+                _dispatch_webhook(
+                    webhook_url,
+                    {
+                        **_wh_payload,
+                        "event_type": "failure" if status != "PASS" else "pass",
+                    },
+                )
             else:
                 _maybe_dispatch_webhook(
                     url=webhook_url,

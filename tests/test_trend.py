@@ -42,7 +42,12 @@ def _make_run(
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     if write_jsonl:
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"run_id": run_id, "status": status, "timestamp_utc": payload["timestamp_utc"]}) + "\n")
+            f.write(
+                json.dumps(
+                    {"run_id": run_id, "status": status, "timestamp_utc": payload["timestamp_utc"]}
+                )
+                + "\n"
+            )
     return model_root
 
 

@@ -319,8 +319,18 @@ def test_format_compare_text_shows_gate_change() -> None:
     baseline = _make_run(score=0.8)
     candidate = _make_run(score=0.4, status="FAIL")
     # Manually add gate results
-    baseline["gates"] = [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": True, "actual": 0.8}]
-    candidate["gates"] = [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": False, "actual": 0.4}]
+    baseline["gates"] = [
+        {"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": True, "actual": 0.8}
+    ]
+    candidate["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.7,
+            "passed": False,
+            "actual": 0.4,
+        }
+    ]
     cmp = compare_runs(baseline, candidate)
     text = format_compare_text(cmp)
     assert "REGRESSED" in text
@@ -340,8 +350,18 @@ def test_format_compare_text_shows_metric_deltas() -> None:
 def test_format_compare_text_improvement_tag() -> None:
     baseline = _make_run(score=0.5)
     candidate = _make_run(score=0.8)
-    baseline["gates"] = [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": False, "actual": 0.5}]
-    candidate["gates"] = [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": True, "actual": 0.8}]
+    baseline["gates"] = [
+        {
+            "metric": "vbench_temporal.score",
+            "op": ">=",
+            "value": 0.7,
+            "passed": False,
+            "actual": 0.5,
+        }
+    ]
+    candidate["gates"] = [
+        {"metric": "vbench_temporal.score", "op": ">=", "value": 0.7, "passed": True, "actual": 0.8}
+    ]
     cmp = compare_runs(baseline, candidate)
     text = format_compare_text(cmp)
     assert "IMPROVED" in text

@@ -82,11 +82,16 @@ def test_cli_run_pass(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts = tmp_path / "artifacts"
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+        ]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "status=PASS" in output
@@ -96,12 +101,17 @@ def test_cli_run_print_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts = tmp_path / "artifacts"
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-        "--print-json",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+            "--print-json",
+        ]
+    )
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "PASS"
@@ -135,11 +145,16 @@ def test_cli_run_gate_fail(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     suite_file.write_text(yaml.dump(suite), encoding="utf-8")
     artifacts = tmp_path / "artifacts"
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+        ]
+    )
     assert result == 2  # FAIL exit code
 
 
@@ -195,12 +210,18 @@ def test_cli_run_webhook_url_passed_to_run_suite(tmp_path: Path) -> None:
         }
 
     with patch("temporalci.cli.run_suite", side_effect=_fake_run_suite):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(artifacts),
-            "--baseline-mode", "none",
-            "--webhook-url", "http://test.example/hook",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(artifacts),
+                "--baseline-mode",
+                "none",
+                "--webhook-url",
+                "http://test.example/hook",
+            ]
+        )
 
     assert result == 0
     assert captured.get("webhook_url") == "http://test.example/hook"
@@ -229,11 +250,16 @@ def test_cli_run_no_webhook_url_by_default(tmp_path: Path) -> None:
         }
 
     with patch("temporalci.cli.run_suite", side_effect=_fake_run_suite):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(artifacts),
-            "--baseline-mode", "none",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(artifacts),
+                "--baseline-mode",
+                "none",
+            ]
+        )
 
     assert result == 0
     assert captured.get("webhook_url") is None
@@ -253,7 +279,15 @@ def _make_run_json(tmp_path: Path, run_id: str, score: float, status: str = "PAS
         "suite_name": "s",
         "model_name": "m",
         "metrics": {"vbench_temporal": {"score": score}},
-        "gates": [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.5, "actual": score, "passed": score >= 0.5}],
+        "gates": [
+            {
+                "metric": "vbench_temporal.score",
+                "op": ">=",
+                "value": 0.5,
+                "actual": score,
+                "passed": score >= 0.5,
+            }
+        ],
         "samples": [],
     }
     path = tmp_path / f"{run_id}.json"
@@ -266,12 +300,17 @@ def test_cli_compare_creates_report(tmp_path: Path, capsys: pytest.CaptureFixtur
     candidate_json = _make_run_json(tmp_path, "cand002", score=0.6)
     out = tmp_path / "compare.html"
 
-    result = main([
-        "compare",
-        "--baseline", str(baseline_json),
-        "--candidate", str(candidate_json),
-        "--output", str(out),
-    ])
+    result = main(
+        [
+            "compare",
+            "--baseline",
+            str(baseline_json),
+            "--candidate",
+            str(candidate_json),
+            "--output",
+            str(out),
+        ]
+    )
 
     # candidate (0.6) < baseline (0.8) → regression → exit 1
     assert result == 1
@@ -282,22 +321,30 @@ def test_cli_compare_creates_report(tmp_path: Path, capsys: pytest.CaptureFixtur
 
 def test_cli_compare_missing_baseline(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     candidate_json = _make_run_json(tmp_path, "cand", score=0.6)
-    result = main([
-        "compare",
-        "--baseline", str(tmp_path / "nonexistent.json"),
-        "--candidate", str(candidate_json),
-    ])
+    result = main(
+        [
+            "compare",
+            "--baseline",
+            str(tmp_path / "nonexistent.json"),
+            "--candidate",
+            str(candidate_json),
+        ]
+    )
     assert result == 1
     assert "config error" in capsys.readouterr().out
 
 
 def test_cli_compare_missing_candidate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     baseline_json = _make_run_json(tmp_path, "base", score=0.8)
-    result = main([
-        "compare",
-        "--baseline", str(baseline_json),
-        "--candidate", str(tmp_path / "nonexistent.json"),
-    ])
+    result = main(
+        [
+            "compare",
+            "--baseline",
+            str(baseline_json),
+            "--candidate",
+            str(tmp_path / "nonexistent.json"),
+        ]
+    )
     assert result == 1
     assert "config error" in capsys.readouterr().out
 
@@ -307,12 +354,17 @@ def test_cli_compare_report_contains_run_ids(tmp_path: Path) -> None:
     candidate_json = _make_run_json(tmp_path, "cand-abc", score=0.6)
     out = tmp_path / "compare.html"
 
-    result = main([
-        "compare",
-        "--baseline", str(baseline_json),
-        "--candidate", str(candidate_json),
-        "--output", str(out),
-    ])
+    result = main(
+        [
+            "compare",
+            "--baseline",
+            str(baseline_json),
+            "--candidate",
+            str(candidate_json),
+            "--output",
+            str(out),
+        ]
+    )
 
     # Report is always written; exit code depends on whether regression detected
     assert result in (0, 1)
@@ -350,7 +402,17 @@ def _populate_model_root(tmp_path: Path, n_runs: int = 3) -> Path:
         }
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"run_id": run_id, "status": "PASS", "timestamp_utc": ts.isoformat(), "sample_count": 0}) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "status": "PASS",
+                        "timestamp_utc": ts.isoformat(),
+                        "sample_count": 0,
+                    }
+                )
+                + "\n"
+            )
     return model_root
 
 
@@ -358,11 +420,15 @@ def test_cli_trend_creates_report(tmp_path: Path, capsys: pytest.CaptureFixture[
     model_root = _populate_model_root(tmp_path, n_runs=3)
     out = tmp_path / "trend.html"
 
-    result = main([
-        "trend",
-        "--model-root", str(model_root),
-        "--output", str(out),
-    ])
+    result = main(
+        [
+            "trend",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out),
+        ]
+    )
 
     assert result == 0
     assert out.exists()
@@ -374,10 +440,13 @@ def test_cli_trend_creates_report(tmp_path: Path, capsys: pytest.CaptureFixture[
 def test_cli_trend_no_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     empty_root = tmp_path / "empty_model"
     empty_root.mkdir()
-    result = main([
-        "trend",
-        "--model-root", str(empty_root),
-    ])
+    result = main(
+        [
+            "trend",
+            "--model-root",
+            str(empty_root),
+        ]
+    )
     assert result == 1
     assert "no runs found" in capsys.readouterr().out
 
@@ -386,12 +455,17 @@ def test_cli_trend_last_n_limits_output(tmp_path: Path) -> None:
     model_root = _populate_model_root(tmp_path, n_runs=5)
     out = tmp_path / "trend2.html"
 
-    result = main([
-        "trend",
-        "--model-root", str(model_root),
-        "--output", str(out),
-        "--last-n", "2",
-    ])
+    result = main(
+        [
+            "trend",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out),
+            "--last-n",
+            "2",
+        ]
+    )
 
     assert result == 0
     output_text = out.read_text(encoding="utf-8")
@@ -403,12 +477,17 @@ def test_cli_trend_custom_title(tmp_path: Path) -> None:
     model_root = _populate_model_root(tmp_path, n_runs=2)
     out = tmp_path / "trend_titled.html"
 
-    result = main([
-        "trend",
-        "--model-root", str(model_root),
-        "--output", str(out),
-        "--title", "My Custom Trend",
-    ])
+    result = main(
+        [
+            "trend",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out),
+            "--title",
+            "My Custom Trend",
+        ]
+    )
 
     assert result == 0
     assert "My Custom Trend" in out.read_text(encoding="utf-8")
@@ -422,11 +501,15 @@ def test_cli_trend_custom_title(tmp_path: Path) -> None:
 def test_cli_status_shows_run_history(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _populate_model_root(tmp_path, n_runs=3)
 
-    result = main([
-        "status",
-        "--model-root", str(model_root),
-        "--last-n", "3",
-    ])
+    result = main(
+        [
+            "status",
+            "--model-root",
+            str(model_root),
+            "--last-n",
+            "3",
+        ]
+    )
 
     assert result == 0
     output = capsys.readouterr().out
@@ -438,10 +521,13 @@ def test_cli_status_shows_run_history(tmp_path: Path, capsys: pytest.CaptureFixt
 def test_cli_status_shows_metrics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _populate_model_root(tmp_path, n_runs=2)
 
-    result = main([
-        "status",
-        "--model-root", str(model_root),
-    ])
+    result = main(
+        [
+            "status",
+            "--model-root",
+            str(model_root),
+        ]
+    )
 
     assert result == 0
     output = capsys.readouterr().out
@@ -452,16 +538,21 @@ def test_cli_status_no_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     empty = tmp_path / "empty_model"
     empty.mkdir()
 
-    result = main([
-        "status",
-        "--model-root", str(empty),
-    ])
+    result = main(
+        [
+            "status",
+            "--model-root",
+            str(empty),
+        ]
+    )
 
     assert result == 1
     assert "no runs found" in capsys.readouterr().out
 
 
-def test_cli_status_sparkline_shows_p_and_f(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_sparkline_shows_p_and_f(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Sparkline contains 'P' for PASS runs."""
     model_root = _populate_model_root(tmp_path, n_runs=3)
 
@@ -484,11 +575,16 @@ def test_cli_run_output_shows_report_path(
     _write_minimal_suite(suite_file)
     artifacts = tmp_path / "artifacts"
 
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+        ]
+    )
 
     assert result == 0
     output = capsys.readouterr().out
@@ -504,11 +600,16 @@ def test_cli_run_output_shows_index_path(
     _write_minimal_suite(suite_file)
     artifacts = tmp_path / "artifacts"
 
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+        ]
+    )
 
     assert result == 0
     output = capsys.readouterr().out
@@ -524,12 +625,17 @@ def test_cli_run_output_no_paths_with_print_json(
     _write_minimal_suite(suite_file)
     artifacts = tmp_path / "artifacts"
 
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts),
-        "--baseline-mode", "none",
-        "--print-json",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts),
+            "--baseline-mode",
+            "none",
+            "--print-json",
+        ]
+    )
 
     assert result == 0
     raw = capsys.readouterr().out
@@ -571,20 +677,29 @@ def _populate_model_root_with_runs(
         }
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"run_id": run_id, "status": "PASS", "timestamp_utc": ts.isoformat()}) + "\n")
+            f.write(
+                json.dumps({"run_id": run_id, "status": "PASS", "timestamp_utc": ts.isoformat()})
+                + "\n"
+            )
     return model_root
 
 
-def test_cli_compare_auto_creates_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_compare_auto_creates_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """compare --model-root auto-selects runs and writes compare report."""
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=3)
     out = tmp_path / "auto_compare.html"
 
-    result = main([
-        "compare",
-        "--model-root", str(model_root),
-        "--output", str(out),
-    ])
+    result = main(
+        [
+            "compare",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out),
+        ]
+    )
 
     assert result == 0
     assert out.exists()
@@ -610,7 +725,9 @@ def test_cli_compare_auto_no_runs(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "no runs" in capsys.readouterr().out
 
 
-def test_cli_compare_auto_only_one_run_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_compare_auto_only_one_run_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=1)
     result = main(["compare", "--model-root", str(model_root)])
     assert result == 1
@@ -647,11 +764,15 @@ def _make_prune_model_root(tmp_path: Path, n_runs: int = 5) -> Path:
 
 def test_cli_prune_deletes_old_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _make_prune_model_root(tmp_path, n_runs=5)
-    result = main([
-        "prune",
-        "--model-root", str(model_root),
-        "--keep-last", "3",
-    ])
+    result = main(
+        [
+            "prune",
+            "--model-root",
+            str(model_root),
+            "--keep-last",
+            "3",
+        ]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "deleted=2" in output
@@ -661,12 +782,16 @@ def test_cli_prune_deletes_old_runs(tmp_path: Path, capsys: pytest.CaptureFixtur
 def test_cli_prune_dry_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _make_prune_model_root(tmp_path, n_runs=4)
     dirs_before = sorted(d.name for d in model_root.iterdir() if d.is_dir())
-    result = main([
-        "prune",
-        "--model-root", str(model_root),
-        "--keep-last", "2",
-        "--dry-run",
-    ])
+    result = main(
+        [
+            "prune",
+            "--model-root",
+            str(model_root),
+            "--keep-last",
+            "2",
+            "--dry-run",
+        ]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "[dry-run]" in output
@@ -681,7 +806,9 @@ def test_cli_prune_missing_model_root(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "config error" in capsys.readouterr().out
 
 
-def test_cli_prune_keep_last_default_keeps_20(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prune_keep_last_default_keeps_20(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Default keep-last=20 keeps all runs when total is less than 20."""
     model_root = _make_prune_model_root(tmp_path, n_runs=5)
     result = main(["prune", "--model-root", str(model_root)])
@@ -725,7 +852,17 @@ def test_cli_status_verbose_shows_dims(tmp_path: Path, capsys: pytest.CaptureFix
     }
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as f:
-        f.write(json.dumps({"run_id": run_id, "status": "PASS", "timestamp_utc": ts.isoformat(), "sample_count": 0}) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "PASS",
+                    "timestamp_utc": ts.isoformat(),
+                    "sample_count": 0,
+                }
+            )
+            + "\n"
+        )
 
     result = main(["status", "--model-root", str(model_root), "--verbose"])
     assert result == 0
@@ -734,7 +871,9 @@ def test_cli_status_verbose_shows_dims(tmp_path: Path, capsys: pytest.CaptureFix
     assert "temporal_flicker" in output
 
 
-def test_cli_status_no_verbose_hides_dims(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_no_verbose_hides_dims(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Without --verbose, nested dim paths are hidden."""
     model_root = tmp_path / "model"
     model_root.mkdir()
@@ -763,7 +902,17 @@ def test_cli_status_no_verbose_hides_dims(tmp_path: Path, capsys: pytest.Capture
     }
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as f:
-        f.write(json.dumps({"run_id": run_id, "status": "PASS", "timestamp_utc": ts.isoformat(), "sample_count": 0}) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "PASS",
+                    "timestamp_utc": ts.isoformat(),
+                    "sample_count": 0,
+                }
+            )
+            + "\n"
+        )
 
     result = main(["status", "--model-root", str(model_root)])
     assert result == 0
@@ -780,7 +929,9 @@ def test_cli_status_no_verbose_hides_dims(tmp_path: Path, capsys: pytest.Capture
 # ---------------------------------------------------------------------------
 
 
-def test_cli_compare_auto_prints_text_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_compare_auto_prints_text_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """compare --model-root prints format_compare_text summary before HTML path."""
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=3)
     out = tmp_path / "cmp.html"
@@ -794,7 +945,9 @@ def test_cli_compare_auto_prints_text_summary(tmp_path: Path, capsys: pytest.Cap
     assert "compare report" in output
 
 
-def test_cli_compare_explicit_prints_text_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_compare_explicit_prints_text_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """compare --baseline --candidate also prints text summary."""
     import datetime
 
@@ -817,7 +970,9 @@ def test_cli_compare_explicit_prints_text_summary(tmp_path: Path, capsys: pytest
     b_path = model_root / "run_001" / "run.json"
     c_path = model_root / "run_002" / "run.json"
     out = tmp_path / "cmp.html"
-    result = main(["compare", "--baseline", str(b_path), "--candidate", str(c_path), "--output", str(out)])
+    result = main(
+        ["compare", "--baseline", str(b_path), "--candidate", str(c_path), "--output", str(out)]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "baseline" in output
@@ -829,7 +984,9 @@ def test_cli_compare_explicit_prints_text_summary(tmp_path: Path, capsys: pytest
 # ---------------------------------------------------------------------------
 
 
-def test_cli_run_prune_keep_last_removes_old_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_run_prune_keep_last_removes_old_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """run --prune-keep-last N prunes old runs after successful run."""
     suite_path = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_path)
@@ -838,11 +995,16 @@ def test_cli_run_prune_keep_last_removes_old_runs(tmp_path: Path, capsys: pytest
     # Run twice to create history, then third run with prune
     main(["run", str(suite_path), "--artifacts-dir", artifacts_dir])
     main(["run", str(suite_path), "--artifacts-dir", artifacts_dir])
-    result = main([
-        "run", str(suite_path),
-        "--artifacts-dir", artifacts_dir,
-        "--prune-keep-last", "2",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_path),
+            "--artifacts-dir",
+            artifacts_dir,
+            "--prune-keep-last",
+            "2",
+        ]
+    )
 
     assert result == 0
     output = capsys.readouterr().out
@@ -889,16 +1051,23 @@ def _make_suite_root(tmp_path: Path, model_names: list[str], n_runs: int = 3) ->
             }
             (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
             with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-                f.write(json.dumps({
-                    "run_id": run_id,
-                    "status": "PASS",
-                    "timestamp_utc": ts.isoformat(),
-                    "sample_count": 0,
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "run_id": run_id,
+                            "status": "PASS",
+                            "timestamp_utc": ts.isoformat(),
+                            "sample_count": 0,
+                        }
+                    )
+                    + "\n"
+                )
     return suite_root
 
 
-def test_cli_status_suite_root_lists_all_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_suite_root_lists_all_models(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     suite_root = _make_suite_root(tmp_path, ["model_a", "model_b"])
     result = main(["status", "--suite-root", str(suite_root)])
     assert result == 0
@@ -907,7 +1076,9 @@ def test_cli_status_suite_root_lists_all_models(tmp_path: Path, capsys: pytest.C
     assert "model_b" in output
 
 
-def test_cli_status_suite_root_shows_pass_fail_counts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_suite_root_shows_pass_fail_counts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     suite_root = _make_suite_root(tmp_path, ["model_x"], n_runs=3)
     result = main(["status", "--suite-root", str(suite_root)])
     assert result == 0
@@ -915,13 +1086,17 @@ def test_cli_status_suite_root_shows_pass_fail_counts(tmp_path: Path, capsys: py
     assert "3" in output  # run count
 
 
-def test_cli_status_suite_root_nonexistent_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_suite_root_nonexistent_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     result = main(["status", "--suite-root", str(tmp_path / "no_such_dir")])
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
 
-def test_cli_status_suite_root_empty_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_suite_root_empty_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     suite_root = tmp_path / "empty_suite"
     suite_root.mkdir()
     result = main(["status", "--suite-root", str(suite_root)])
@@ -929,7 +1104,9 @@ def test_cli_status_suite_root_empty_fails(tmp_path: Path, capsys: pytest.Captur
     assert "no models" in capsys.readouterr().out
 
 
-def test_cli_status_suite_root_failing_model_returns_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_suite_root_failing_model_returns_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """If any model's latest run is FAIL, suite-status returns non-zero."""
     import datetime
 
@@ -944,7 +1121,17 @@ def test_cli_status_suite_root_failing_model_returns_nonzero(tmp_path: Path, cap
     payload = {"run_id": run_id, "status": "FAIL", "metrics": {}, "gates": [], "samples": []}
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as f:
-        f.write(json.dumps({"run_id": run_id, "status": "FAIL", "timestamp_utc": ts.isoformat(), "sample_count": 0}) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "FAIL",
+                    "timestamp_utc": ts.isoformat(),
+                    "sample_count": 0,
+                }
+            )
+            + "\n"
+        )
 
     result = main(["status", "--suite-root", str(suite_root)])
     assert result != 0
@@ -957,13 +1144,19 @@ def test_cli_status_suite_root_failing_model_returns_nonzero(tmp_path: Path, cap
 # ---------------------------------------------------------------------------
 
 
-def test_cli_prune_suite_root_prunes_all_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prune_suite_root_prunes_all_models(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     suite_root = _make_suite_root(tmp_path, ["model_a", "model_b"], n_runs=4)
-    result = main([
-        "prune",
-        "--suite-root", str(suite_root),
-        "--keep-last", "2",
-    ])
+    result = main(
+        [
+            "prune",
+            "--suite-root",
+            str(suite_root),
+            "--keep-last",
+            "2",
+        ]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "model_a" in output
@@ -975,12 +1168,16 @@ def test_cli_prune_suite_root_dry_run(tmp_path: Path, capsys: pytest.CaptureFixt
     suite_root = _make_suite_root(tmp_path, ["model_x"], n_runs=5)
     # Count dirs before
     dirs_before = list((suite_root / "model_x").iterdir())
-    result = main([
-        "prune",
-        "--suite-root", str(suite_root),
-        "--keep-last", "2",
-        "--dry-run",
-    ])
+    result = main(
+        [
+            "prune",
+            "--suite-root",
+            str(suite_root),
+            "--keep-last",
+            "2",
+            "--dry-run",
+        ]
+    )
     assert result == 0
     dirs_after = list((suite_root / "model_x").iterdir())
     # Nothing actually deleted
@@ -989,13 +1186,17 @@ def test_cli_prune_suite_root_dry_run(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "[dry-run]" in output
 
 
-def test_cli_prune_suite_root_nonexistent_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prune_suite_root_nonexistent_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     result = main(["prune", "--suite-root", str(tmp_path / "no_such"), "--keep-last", "5"])
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
 
-def test_cli_prune_suite_root_empty_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prune_suite_root_empty_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     empty = tmp_path / "empty_suite"
     empty.mkdir()
     result = main(["prune", "--suite-root", str(empty), "--keep-last", "5"])
@@ -1034,12 +1235,17 @@ def test_cli_export_csv_has_header(tmp_path: Path) -> None:
 def test_cli_export_jsonl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=2)
     out = tmp_path / "runs.jsonl"
-    result = main([
-        "export",
-        "--model-root", str(model_root),
-        "--output", str(out),
-        "--format", "jsonl",
-    ])
+    result = main(
+        [
+            "export",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out),
+            "--format",
+            "jsonl",
+        ]
+    )
     assert result == 0
     lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2
@@ -1056,12 +1262,18 @@ def test_cli_export_last_n(tmp_path: Path) -> None:
     assert len(rows) == 3
 
 
-def test_cli_export_missing_model_root_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    result = main([
-        "export",
-        "--model-root", str(tmp_path / "no_such"),
-        "--output", str(tmp_path / "out.csv"),
-    ])
+def test_cli_export_missing_model_root_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = main(
+        [
+            "export",
+            "--model-root",
+            str(tmp_path / "no_such"),
+            "--output",
+            str(tmp_path / "out.csv"),
+        ]
+    )
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
@@ -1070,11 +1282,15 @@ def test_cli_export_empty_history_fails(tmp_path: Path, capsys: pytest.CaptureFi
     model_root = tmp_path / "model"
     model_root.mkdir()
     (model_root / "runs.jsonl").write_text("", encoding="utf-8")
-    result = main([
-        "export",
-        "--model-root", str(model_root),
-        "--output", str(tmp_path / "out.csv"),
-    ])
+    result = main(
+        [
+            "export",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(tmp_path / "out.csv"),
+        ]
+    )
     assert result != 0
     assert "no runs" in capsys.readouterr().out
 
@@ -1084,7 +1300,9 @@ def test_cli_export_empty_history_fails(tmp_path: Path, capsys: pytest.CaptureFi
 # ---------------------------------------------------------------------------
 
 
-def test_cli_run_sample_limits_sample_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_run_sample_limits_sample_count(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """run --sample 1 produces a run with only 1 sample even if suite has more."""
     suite_path = tmp_path / "suite.yaml"
     # Suite has 3 prompts × 2 seeds = 6 samples total
@@ -1114,7 +1332,9 @@ def test_cli_run_sample_limits_sample_count(tmp_path: Path, capsys: pytest.Captu
     assert "samples=1" in output
 
 
-def test_cli_run_sample_zero_same_as_full(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_run_sample_zero_same_as_full(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """run without --sample runs all samples."""
     suite_path = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_path)
@@ -1162,12 +1382,17 @@ def test_cli_run_all_models_output_contains_both_models(
     """When --model is omitted, both models run and appear in output."""
     suite_file = tmp_path / "suite.yaml"
     _write_multi_model_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     assert result == 0
     output = capsys.readouterr().out
     assert "model_a" in output
@@ -1180,12 +1405,17 @@ def test_cli_run_all_models_summary_table_printed(
     """Summary table with '── summary ──' is printed for multi-model runs."""
     suite_file = tmp_path / "suite.yaml"
     _write_multi_model_suite(suite_file)
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     output = capsys.readouterr().out
     assert "── summary ──" in output
     assert "models passed" in output
@@ -1195,12 +1425,17 @@ def test_cli_run_all_models_exit_zero_when_all_pass(tmp_path: Path) -> None:
     """All models PASS gate → exit 0."""
     suite_file = tmp_path / "suite.yaml"
     _write_multi_model_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     assert result == 0
 
 
@@ -1208,12 +1443,17 @@ def test_cli_run_all_models_exit_2_when_any_fail(tmp_path: Path) -> None:
     """Gate failure for models → exit 2."""
     suite_file = tmp_path / "suite.yaml"
     _write_multi_model_suite(suite_file, fail_gate=True)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     assert result == 2
 
 
@@ -1228,11 +1468,16 @@ def test_cli_run_progress_shown_by_default(
     """Progress '[1/1]' line is printed when --no-progress is not given."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+        ]
+    )
     output = capsys.readouterr().out
     assert "[1/1]" in output
 
@@ -1243,12 +1488,17 @@ def test_cli_run_no_progress_suppresses_output(
     """--no-progress suppresses '[N/M]' progress lines."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     output = capsys.readouterr().out
     assert "[1/1]" not in output
 
@@ -1259,12 +1509,17 @@ def test_cli_run_print_json_suppresses_progress(
     """--print-json implicitly disables progress output."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--print-json",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--print-json",
+        ]
+    )
     output = capsys.readouterr().out
     assert "[1/1]" not in output
 
@@ -1279,13 +1534,19 @@ def test_cli_run_tag_writes_tags_json(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "none",
-        "--no-progress",
-        "--tag", "gold",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+            "--tag",
+            "gold",
+        ]
+    )
     assert result == 0
     tags_files = list(artifacts_dir.rglob("tags.json"))
     assert tags_files, "tags.json not found under artifacts"
@@ -1300,24 +1561,35 @@ def test_cli_run_baseline_mode_tag(tmp_path: Path) -> None:
     artifacts_dir = tmp_path / "artifacts"
 
     # First run: tag as 'gold'
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "none",
-        "--no-progress",
-        "--tag", "gold",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+            "--tag",
+            "gold",
+        ]
+    )
     # Capture the first run_id from tags.json
     tags_file = next(artifacts_dir.rglob("tags.json"))
     first_run_id = json.loads(tags_file.read_text(encoding="utf-8"))["gold"]
 
     # Second run: use tag:gold as baseline
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "tag:gold",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "tag:gold",
+            "--no-progress",
+        ]
+    )
     assert result == 0
 
     # Verify second run.json has baseline_run_id pointing to the tagged run
@@ -1334,12 +1606,17 @@ def test_cli_run_invalid_baseline_mode_returns_error(
     """An unknown --baseline-mode value (not built-in, not tag:) causes error exit."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "bogus_mode",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "bogus_mode",
+            "--no-progress",
+        ]
+    )
     assert result != 0
     assert "error" in capsys.readouterr().out.lower()
 
@@ -1349,9 +1626,7 @@ def test_cli_run_invalid_baseline_mode_returns_error(
 # ---------------------------------------------------------------------------
 
 
-def _populate_cli_suite_root(
-    tmp_path: Path, model_names: list[str], n_runs: int = 2
-) -> Path:
+def _populate_cli_suite_root(tmp_path: Path, model_names: list[str], n_runs: int = 2) -> Path:
     """Create suite_root/model_name/... for each model with runs.jsonl + run.json."""
     import datetime
 
@@ -1416,11 +1691,15 @@ def test_cli_export_suite_root_not_found_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """export --suite-root with nonexistent path returns non-zero."""
-    result = main([
-        "export",
-        "--suite-root", str(tmp_path / "no_such"),
-        "--output", str(tmp_path / "out.csv"),
-    ])
+    result = main(
+        [
+            "export",
+            "--suite-root",
+            str(tmp_path / "no_such"),
+            "--output",
+            str(tmp_path / "out.csv"),
+        ]
+    )
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
@@ -1431,11 +1710,15 @@ def test_cli_export_suite_root_empty_fails(
     """export --suite-root with no model data returns non-zero."""
     empty_suite = tmp_path / "empty"
     empty_suite.mkdir()
-    result = main([
-        "export",
-        "--suite-root", str(empty_suite),
-        "--output", str(tmp_path / "out.csv"),
-    ])
+    result = main(
+        [
+            "export",
+            "--suite-root",
+            str(empty_suite),
+            "--output",
+            str(tmp_path / "out.csv"),
+        ]
+    )
     assert result != 0
     output = capsys.readouterr().out
     assert "no runs" in output or "not found" in output
@@ -1446,19 +1729,23 @@ def test_cli_export_suite_root_empty_fails(
 # ---------------------------------------------------------------------------
 
 
-def test_cli_run_workers_2_succeeds(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_run_workers_2_succeeds(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--workers 2 completes without error and reports correct sample count."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "none",
-        "--no-progress",
-        "--workers", "2",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+            "--workers",
+            "2",
+        ]
+    )
     assert result == 0
     assert "samples=1" in capsys.readouterr().out
 
@@ -1484,13 +1771,19 @@ def test_cli_run_workers_skipped_count_shown(
     suite_file.write_text(yaml.dump(suite_yaml), encoding="utf-8")
 
     with patch.object(MockAdapter, "generate", side_effect=RuntimeError("fail")):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "artifacts"),
-            "--baseline-mode", "none",
-            "--no-progress",
-            "--retry", "2",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "artifacts"),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+                "--retry",
+                "2",
+            ]
+        )
     # Gate fails (score 0.0 < 0.5) so exit 2; skipped= in output
     assert result == 2
     assert "skipped=" in capsys.readouterr().out
@@ -1519,13 +1812,19 @@ def test_cli_run_retry_succeeds_after_transient_error(tmp_path: Path) -> None:
         return _unbound(self, *args, **kwargs)
 
     with patch.object(MockAdapter, "generate", _flaky):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "artifacts"),
-            "--baseline-mode", "none",
-            "--no-progress",
-            "--retry", "2",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "artifacts"),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+                "--retry",
+                "2",
+            ]
+        )
     assert result == 0
     assert call_count[0] == 2  # 1 fail + 1 success
 
@@ -1567,9 +1866,7 @@ def test_cli_init_output_is_valid_yaml(tmp_path: Path) -> None:
     assert "gates" in parsed
 
 
-def test_cli_init_refuses_existing_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_init_refuses_existing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """init fails if output already exists without --force."""
     out = tmp_path / "suite.yaml"
     out.write_text("existing", encoding="utf-8")
@@ -1605,12 +1902,17 @@ def test_cli_annotate_adds_note_to_run_json(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     # Find the run.json
     run_jsons = list(artifacts_dir.rglob("run.json"))
     assert len(run_jsons) == 1
@@ -1618,12 +1920,17 @@ def test_cli_annotate_adds_note_to_run_json(tmp_path: Path) -> None:
     run_id = run_json.parent.name
     model_root = run_json.parent.parent
 
-    result = main([
-        "annotate",
-        "--model-root", str(model_root),
-        "--run-id", run_id,
-        "--note", "first gold run",
-    ])
+    result = main(
+        [
+            "annotate",
+            "--model-root",
+            str(model_root),
+            "--run-id",
+            run_id,
+            "--note",
+            "first gold run",
+        ]
+    )
     assert result == 0
     payload = json.loads(run_json.read_text(encoding="utf-8"))
     assert payload.get("note") == "first gold run"
@@ -1636,22 +1943,32 @@ def test_cli_annotate_shows_note_in_status(
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     run_jsons = list(artifacts_dir.rglob("run.json"))
     run_id = run_jsons[0].parent.name
     model_root = run_jsons[0].parent.parent
 
-    main([
-        "annotate",
-        "--model-root", str(model_root),
-        "--run-id", run_id,
-        "--note", "special release",
-    ])
+    main(
+        [
+            "annotate",
+            "--model-root",
+            str(model_root),
+            "--run-id",
+            run_id,
+            "--note",
+            "special release",
+        ]
+    )
     capsys.readouterr()  # clear
 
     main(["status", "--model-root", str(model_root)])
@@ -1663,12 +1980,17 @@ def test_cli_annotate_missing_model_root_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """annotate with nonexistent --model-root returns error."""
-    result = main([
-        "annotate",
-        "--model-root", str(tmp_path / "no_such"),
-        "--run-id", "20260101T000000Z",
-        "--note", "test",
-    ])
+    result = main(
+        [
+            "annotate",
+            "--model-root",
+            str(tmp_path / "no_such"),
+            "--run-id",
+            "20260101T000000Z",
+            "--note",
+            "test",
+        ]
+    )
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
@@ -1679,12 +2001,17 @@ def test_cli_annotate_missing_run_id_fails(
     """annotate with nonexistent run-id returns error."""
     model_root = tmp_path / "model"
     model_root.mkdir()
-    result = main([
-        "annotate",
-        "--model-root", str(model_root),
-        "--run-id", "20260101T000000Z",
-        "--note", "test",
-    ])
+    result = main(
+        [
+            "annotate",
+            "--model-root",
+            str(model_root),
+            "--run-id",
+            "20260101T000000Z",
+            "--note",
+            "test",
+        ]
+    )
     assert result != 0
     assert "not found" in capsys.readouterr().out
 
@@ -1703,14 +2030,20 @@ def test_cli_run_fail_on_skip_exits_2_when_skips_occur(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
 
     with patch.object(MockAdapter, "generate", side_effect=RuntimeError("fail")):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "artifacts"),
-            "--baseline-mode", "none",
-            "--no-progress",
-            "--retry", "1",
-            "--fail-on-skip",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "artifacts"),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+                "--retry",
+                "1",
+                "--fail-on-skip",
+            ]
+        )
     assert result == 2
 
 
@@ -1732,13 +2065,19 @@ def test_cli_run_fail_on_skip_not_set_is_lenient(tmp_path: Path) -> None:
     suite_file.write_text(yaml.dump(suite_yaml), encoding="utf-8")
 
     with patch.object(MockAdapter, "generate", side_effect=RuntimeError("fail")):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "artifacts"),
-            "--baseline-mode", "none",
-            "--no-progress",
-            "--retry", "1",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "artifacts"),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+                "--retry",
+                "1",
+            ]
+        )
     assert result == 0
 
 
@@ -1747,29 +2086,37 @@ def test_cli_run_fail_on_skip_not_set_is_lenient(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_run_rolling_baseline(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_run_rolling_baseline(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--baseline-mode rolling:2 completes successfully after enough prior runs."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
 
     for _ in range(2):
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(artifacts_dir),
-            "--baseline-mode", "none",
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(artifacts_dir),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+            ]
+        )
     capsys.readouterr()
 
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "rolling:2",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "rolling:2",
+            "--no-progress",
+        ]
+    )
     assert result == 0
 
 
@@ -1779,12 +2126,17 @@ def test_cli_run_rolling_baseline_invalid_raises_error(
     """rolling:0 is invalid and causes an error exit."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "artifacts"),
-        "--baseline-mode", "rolling:0",
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+            "--baseline-mode",
+            "rolling:0",
+            "--no-progress",
+        ]
+    )
     assert result != 0
     assert "error" in capsys.readouterr().out.lower()
 
@@ -1799,12 +2151,17 @@ def _run_once_and_get_run_dir(tmp_path: Path) -> Path:
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(artifacts_dir),
-        "--baseline-mode", "none",
-        "--no-progress",
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--baseline-mode",
+            "none",
+            "--no-progress",
+        ]
+    )
     return next(artifacts_dir.rglob("run.json")).parent
 
 
@@ -1837,12 +2194,17 @@ def test_cli_report_model_root_regenerates_all(
     _write_minimal_suite(suite_file)
     artifacts_dir = tmp_path / "artifacts"
     for _ in range(2):
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(artifacts_dir),
-            "--baseline-mode", "none",
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(artifacts_dir),
+                "--baseline-mode",
+                "none",
+                "--no-progress",
+            ]
+        )
     model_root = next(artifacts_dir.rglob("runs.jsonl")).parent
     capsys.readouterr()
 
@@ -1865,9 +2227,7 @@ def test_cli_report_missing_run_dir_fails(
 # ---------------------------------------------------------------------------
 
 
-def test_cli_status_json_output(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """status --output-format json prints a JSON array of run dicts."""
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=3)
     result = main(["status", "--model-root", str(model_root), "--output-format", "json"])
@@ -1888,19 +2248,23 @@ def test_cli_status_json_includes_metrics(
     assert "metrics" in runs[0]
 
 
-def test_cli_status_csv_creates_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_csv_creates_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """status --output-format csv writes a CSV to --output PATH."""
     import csv as csv_mod
 
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=3)
     out = tmp_path / "status.csv"
-    result = main([
-        "status", "--model-root", str(model_root),
-        "--output-format", "csv",
-        "--output", str(out),
-    ])
+    result = main(
+        [
+            "status",
+            "--model-root",
+            str(model_root),
+            "--output-format",
+            "csv",
+            "--output",
+            str(out),
+        ]
+    )
     assert result == 0
     assert out.exists()
     with out.open(encoding="utf-8") as fh:
@@ -1915,23 +2279,31 @@ def test_cli_status_csv_requires_output_path(
 ) -> None:
     """status --output-format csv without --output returns error."""
     model_root = _populate_model_root_with_runs(tmp_path, n_runs=1)
-    result = main([
-        "status", "--model-root", str(model_root),
-        "--output-format", "csv",
-    ])
+    result = main(
+        [
+            "status",
+            "--model-root",
+            str(model_root),
+            "--output-format",
+            "csv",
+        ]
+    )
     assert result != 0
     assert "required" in capsys.readouterr().out
 
 
-def test_cli_status_suite_json_output(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_suite_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """status --suite-root --output-format json prints dict of model→runs."""
     suite_root = _populate_cli_suite_root(tmp_path, ["model_a", "model_b"], n_runs=2)
-    result = main([
-        "status", "--suite-root", str(suite_root),
-        "--output-format", "json",
-    ])
+    result = main(
+        [
+            "status",
+            "--suite-root",
+            str(suite_root),
+            "--output-format",
+            "json",
+        ]
+    )
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
     assert isinstance(payload, dict)
@@ -1965,13 +2337,19 @@ def test_cli_run_inter_sample_delay_wired(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--workers", "2",
-            "--inter-sample-delay", "1.5",
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--workers",
+                "2",
+                "--inter-sample-delay",
+                "1.5",
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["inter_sample_delay"] == 1.5
 
@@ -1982,11 +2360,15 @@ def test_cli_run_inter_sample_delay_default_zero(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["inter_sample_delay"] == 0.0
 
@@ -2019,9 +2401,7 @@ def test_cli_dry_run_does_not_create_artifacts(tmp_path: Path) -> None:
     assert not art_dir.exists()
 
 
-def test_cli_dry_run_with_sample_limit(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_dry_run_with_sample_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--dry-run respects --sample N and shows capped count."""
     suite = {
         "version": 1,
@@ -2043,21 +2423,24 @@ def test_cli_dry_run_with_sample_limit(
 
     suite_file = tmp_path / "suite.yaml"
     suite_file.write_text(yaml.dump(suite), encoding="utf-8")
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--dry-run",
-        "--sample", "4",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--dry-run",
+            "--sample",
+            "4",
+        ]
+    )
     assert result == 0
     out = capsys.readouterr().out
     # 9 total, capped to 4
     assert "4" in out
 
 
-def test_cli_dry_run_multi_model(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_dry_run_multi_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--dry-run with multiple models reports each model."""
     suite = {
         "version": 1,
@@ -2099,12 +2482,14 @@ def _populate_model_root_run_jsons(tmp_path: Path, n_runs: int = 3) -> Path:
         run_dir = model_root / run_id
         run_dir.mkdir()
         (run_dir / "run.json").write_text(
-            json.dumps({
-                "run_id": run_id,
-                "timestamp_utc": ts.isoformat(),
-                "status": "PASS" if i % 2 == 0 else "FAIL",
-                "sample_count": 2,
-            }),
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "timestamp_utc": ts.isoformat(),
+                    "status": "PASS" if i % 2 == 0 else "FAIL",
+                    "sample_count": 2,
+                }
+            ),
             encoding="utf-8",
         )
     return model_root
@@ -2169,12 +2554,17 @@ def test_cli_run_output_json_single_model(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     out_json = tmp_path / "result.json"
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--no-progress",
-        "--output-json", str(out_json),
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--no-progress",
+            "--output-json",
+            str(out_json),
+        ]
+    )
     assert result == 0
     assert out_json.exists()
     payload = json.loads(out_json.read_text(encoding="utf-8"))
@@ -2188,12 +2578,17 @@ def test_cli_run_output_json_creates_parent_dirs(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
     out_json = tmp_path / "reports" / "sub" / "result.json"
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--no-progress",
-        "--output-json", str(out_json),
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--no-progress",
+            "--output-json",
+            str(out_json),
+        ]
+    )
     assert out_json.exists()
 
 
@@ -2216,12 +2611,17 @@ def test_cli_run_output_json_multi_model_is_list(tmp_path: Path) -> None:
     suite_file = tmp_path / "suite.yaml"
     suite_file.write_text(yaml.dump(suite), encoding="utf-8")
     out_json = tmp_path / "all.json"
-    main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--no-progress",
-        "--output-json", str(out_json),
-    ])
+    main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--no-progress",
+            "--output-json",
+            str(out_json),
+        ]
+    )
     assert out_json.exists()
     data = json.loads(out_json.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -2264,49 +2664,42 @@ def _populate_model_root_with_two_runs(
         }
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "run_id": run_id,
-                "timestamp_utc": ts.isoformat(),
-                "status": "PASS",
-                "sample_count": 1,
-                "metrics": payload["metrics"],
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "timestamp_utc": ts.isoformat(),
+                        "status": "PASS",
+                        "sample_count": 1,
+                        "metrics": payload["metrics"],
+                    }
+                )
+                + "\n"
+            )
     return model_root
 
 
-def test_cli_status_trend_arrow_up(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_trend_arrow_up(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """↑ is shown when latest metric improved vs previous run."""
-    model_root = _populate_model_root_with_two_runs(
-        tmp_path, prev_score=0.70, latest_score=0.82
-    )
+    model_root = _populate_model_root_with_two_runs(tmp_path, prev_score=0.70, latest_score=0.82)
     result = main(["status", "--model-root", str(model_root)])
     assert result == 0
     out = capsys.readouterr().out
     assert "↑" in out
 
 
-def test_cli_status_trend_arrow_down(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_trend_arrow_down(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """↓ is shown when latest metric declined vs previous run."""
-    model_root = _populate_model_root_with_two_runs(
-        tmp_path, prev_score=0.85, latest_score=0.72
-    )
+    model_root = _populate_model_root_with_two_runs(tmp_path, prev_score=0.85, latest_score=0.72)
     result = main(["status", "--model-root", str(model_root)])
     assert result == 0
     out = capsys.readouterr().out
     assert "↓" in out
 
 
-def test_cli_status_trend_arrow_stable(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_status_trend_arrow_stable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """→ is shown when latest metric is unchanged vs previous run."""
-    model_root = _populate_model_root_with_two_runs(
-        tmp_path, prev_score=0.75, latest_score=0.75
-    )
+    model_root = _populate_model_root_with_two_runs(tmp_path, prev_score=0.75, latest_score=0.75)
     result = main(["status", "--model-root", str(model_root)])
     assert result == 0
     out = capsys.readouterr().out
@@ -2339,13 +2732,18 @@ def test_cli_status_no_trend_arrows_for_first_run(
     }
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "run_id": run_id,
-            "timestamp_utc": ts.isoformat(),
-            "status": "PASS",
-            "sample_count": 1,
-            "metrics": payload["metrics"],
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "timestamp_utc": ts.isoformat(),
+                    "status": "PASS",
+                    "sample_count": 1,
+                    "metrics": payload["metrics"],
+                }
+            )
+            + "\n"
+        )
 
     result = main(["status", "--model-root", str(model_root)])
     assert result == 0
@@ -2369,12 +2767,17 @@ def test_config_file_sets_workers_default(tmp_path: Path) -> None:
 
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "--config", str(cfg_file),
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "--config",
+                str(cfg_file),
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["workers"] == 3
 
@@ -2388,13 +2791,19 @@ def test_config_file_cli_overrides_config(tmp_path: Path) -> None:
 
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "--config", str(cfg_file),
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-            "--workers", "7",
-        ])
+        main(
+            [
+                "--config",
+                str(cfg_file),
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+                "--workers",
+                "7",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["workers"] == 7
 
@@ -2406,12 +2815,17 @@ def test_config_file_missing_uses_parser_defaults(tmp_path: Path) -> None:
 
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "--config", str(tmp_path / "nonexistent.yaml"),
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "--config",
+                str(tmp_path / "nonexistent.yaml"),
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["workers"] == 1
 
@@ -2428,12 +2842,17 @@ def test_config_file_multiple_keys(tmp_path: Path) -> None:
 
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "--config", str(cfg_file),
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "--config",
+                str(cfg_file),
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["workers"] == 2
     assert kwargs["retry"] == 3
@@ -2449,18 +2868,18 @@ def _write_alert_state(model_root: Path, state: str, last_run_id: str = "run001"
     import json as _json
 
     (model_root / "alert_state.json").write_text(
-        _json.dumps({
-            "state": state,
-            "last_run_id": last_run_id,
-            "last_change_run_id": last_run_id,
-        }),
+        _json.dumps(
+            {
+                "state": state,
+                "last_run_id": last_run_id,
+                "last_change_run_id": last_run_id,
+            }
+        ),
         encoding="utf-8",
     )
 
 
-def test_cli_alert_passing_exits_zero(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_alert_passing_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = tmp_path / "model"
     model_root.mkdir()
     _write_alert_state(model_root, "passing")
@@ -2469,9 +2888,7 @@ def test_cli_alert_passing_exits_zero(
     assert "ok" in capsys.readouterr().out
 
 
-def test_cli_alert_failing_exits_one(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_alert_failing_exits_one(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = tmp_path / "model"
     model_root.mkdir()
     _write_alert_state(model_root, "failing", last_run_id="run_bad")
@@ -2491,9 +2908,7 @@ def test_cli_alert_no_state_file_exits_zero(
     assert "ok" in capsys.readouterr().out
 
 
-def test_cli_alert_missing_model_root(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_alert_missing_model_root(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     result = main(["alert", "--model-root", str(tmp_path / "nope")])
     assert result == 1
     assert "config error" in capsys.readouterr().out
@@ -2510,7 +2925,9 @@ def test_cli_alert_suite_root_any_failing(
         mr.mkdir()
         _write_alert_state(mr, state)
         # write a minimal runs.jsonl so discover_models finds the model
-        (mr / "runs.jsonl").write_text('{"run_id":"r1","status":"PASS","sample_count":1}\n', encoding="utf-8")
+        (mr / "runs.jsonl").write_text(
+            '{"run_id":"r1","status":"PASS","sample_count":1}\n', encoding="utf-8"
+        )
     result = main(["alert", "--suite-root", str(suite_root)])
     assert result == 1
     out = capsys.readouterr().out
@@ -2527,7 +2944,9 @@ def test_cli_alert_suite_root_all_passing(
         mr = suite_root / name
         mr.mkdir()
         _write_alert_state(mr, "passing")
-        (mr / "runs.jsonl").write_text('{"run_id":"r1","status":"PASS","sample_count":1}\n', encoding="utf-8")
+        (mr / "runs.jsonl").write_text(
+            '{"run_id":"r1","status":"PASS","sample_count":1}\n', encoding="utf-8"
+        )
     result = main(["alert", "--suite-root", str(suite_root)])
     assert result == 0
 
@@ -2576,12 +2995,16 @@ def test_cli_run_fail_fast_stops_after_first_failure(tmp_path: Path) -> None:
         }
 
     with patch("temporalci.cli.run_suite", side_effect=_failing_run_suite):
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-            "--fail-fast",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+                "--fail-fast",
+            ]
+        )
     assert call_count == 1
 
 
@@ -2609,11 +3032,15 @@ def test_cli_run_fail_fast_false_runs_all_models(tmp_path: Path) -> None:
         }
 
     with patch("temporalci.cli.run_suite", side_effect=_failing_run_suite):
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     assert call_count == 3
 
 
@@ -2645,15 +3072,11 @@ def test_cli_doctor_output_has_key_sections(capsys: pytest.CaptureFixture[str]) 
 def _make_tagged_model_root(tmp_path: Path, tags: dict) -> Path:
     model_root = tmp_path / "model"
     model_root.mkdir(exist_ok=True)
-    (model_root / "tags.json").write_text(
-        json.dumps(tags, indent=2), encoding="utf-8"
-    )
+    (model_root / "tags.json").write_text(json.dumps(tags, indent=2), encoding="utf-8")
     return model_root
 
 
-def test_cli_tag_list_empty(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tag_list_empty(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = tmp_path / "model"
     model_root.mkdir()
     result = main(["tag", "list", "--model-root", str(model_root)])
@@ -2661,9 +3084,7 @@ def test_cli_tag_list_empty(
     assert "no tags" in capsys.readouterr().out
 
 
-def test_cli_tag_list_shows_tags(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tag_list_shows_tags(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _make_tagged_model_root(tmp_path, {"stable": "run001", "dev": "run002"})
     result = main(["tag", "list", "--model-root", str(model_root)])
     assert result == 0
@@ -2673,18 +3094,14 @@ def test_cli_tag_list_shows_tags(
     assert "dev" in out
 
 
-def test_cli_tag_show_existing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tag_show_existing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _make_tagged_model_root(tmp_path, {"stable": "run001"})
     result = main(["tag", "show", "--model-root", str(model_root), "--name", "stable"])
     assert result == 0
     assert "run001" in capsys.readouterr().out
 
 
-def test_cli_tag_show_missing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tag_show_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     model_root = _make_tagged_model_root(tmp_path, {})
     result = main(["tag", "show", "--model-root", str(model_root), "--name", "ghost"])
     assert result == 1
@@ -2694,12 +3111,18 @@ def test_cli_tag_show_missing(
 def test_cli_tag_set_and_read_back(tmp_path: Path) -> None:
     model_root = tmp_path / "model"
     model_root.mkdir()
-    result = main([
-        "tag", "set",
-        "--model-root", str(model_root),
-        "--name", "v1",
-        "--run-id", "runABC",
-    ])
+    result = main(
+        [
+            "tag",
+            "set",
+            "--model-root",
+            str(model_root),
+            "--name",
+            "v1",
+            "--run-id",
+            "runABC",
+        ]
+    )
     assert result == 0
     tags = json.loads((model_root / "tags.json").read_text(encoding="utf-8"))
     assert tags["v1"] == "runABC"
@@ -2707,20 +3130,23 @@ def test_cli_tag_set_and_read_back(tmp_path: Path) -> None:
 
 def test_cli_tag_delete(tmp_path: Path) -> None:
     model_root = _make_tagged_model_root(tmp_path, {"old": "run000", "keep": "run001"})
-    result = main([
-        "tag", "delete",
-        "--model-root", str(model_root),
-        "--name", "old",
-    ])
+    result = main(
+        [
+            "tag",
+            "delete",
+            "--model-root",
+            str(model_root),
+            "--name",
+            "old",
+        ]
+    )
     assert result == 0
     tags = json.loads((model_root / "tags.json").read_text(encoding="utf-8"))
     assert "old" not in tags
     assert "keep" in tags
 
 
-def test_cli_tag_missing_model_root(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tag_missing_model_root(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     result = main(["tag", "list", "--model-root", str(tmp_path / "nope")])
     assert result == 1
     assert "config error" in capsys.readouterr().out
@@ -2754,12 +3180,17 @@ def test_cli_run_model_workers_2_runs_all_models(tmp_path: Path) -> None:
         }
 
     with patch("temporalci.cli.run_suite", side_effect=_rs):
-        rc = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-            "--model-workers", "2",
-        ])
+        rc = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+                "--model-workers",
+                "2",
+            ]
+        )
     assert set(called) == {"m1", "m2", "m3"}
     assert rc == 0
 
@@ -2770,11 +3201,15 @@ def test_cli_run_model_workers_sequential_default(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     assert mock_rs.call_count == 1
 
 
@@ -2789,12 +3224,17 @@ def test_cli_run_notify_on_always_wired(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-            "--notify-on", "always",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+                "--notify-on",
+                "always",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["notify_on"] == "always"
 
@@ -2805,11 +3245,15 @@ def test_cli_run_notify_on_default_is_change(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["notify_on"] == "change"
 
@@ -2834,8 +3278,16 @@ def _make_compare_run(model_root: Path, run_id: str, score: float) -> None:
         "gate_failed": False,
         "regression_failed": False,
         "metrics": {"vbench_temporal": {"score": score, "dims": {}}},
-        "gates": [{"metric": "vbench_temporal.score", "op": ">=", "value": 0.0,
-                   "passed": True, "threshold_passed": True, "actual": score}],
+        "gates": [
+            {
+                "metric": "vbench_temporal.score",
+                "op": ">=",
+                "value": 0.0,
+                "passed": True,
+                "threshold_passed": True,
+                "actual": score,
+            }
+        ],
         "regressions": [],
         "samples": [],
     }
@@ -2850,11 +3302,17 @@ def test_cli_compare_run_id_mode_zero_on_no_regression(
     _make_compare_run(model_root, "run_a", 0.8)
     _make_compare_run(model_root, "run_b", 0.85)  # improved
     out_html = tmp_path / "cmp.html"
-    result = main([
-        "compare", "run_a", "run_b",
-        "--model-root", str(model_root),
-        "--output", str(out_html),
-    ])
+    result = main(
+        [
+            "compare",
+            "run_a",
+            "run_b",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out_html),
+        ]
+    )
     captured = capsys.readouterr().out
     assert "run_a" in captured
     assert "run_b" in captured
@@ -2869,11 +3327,17 @@ def test_cli_compare_run_id_mode_returns_one_on_regression(
     _make_compare_run(model_root, "run_a", 0.9)
     _make_compare_run(model_root, "run_b", 0.6)  # regression
     out_html = tmp_path / "cmp.html"
-    result = main([
-        "compare", "run_a", "run_b",
-        "--model-root", str(model_root),
-        "--output", str(out_html),
-    ])
+    result = main(
+        [
+            "compare",
+            "run_a",
+            "run_b",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out_html),
+        ]
+    )
     assert result == 1
 
 
@@ -2885,11 +3349,17 @@ def test_cli_compare_run_id_missing_run_returns_one(
     _make_compare_run(model_root, "run_a", 0.8)
     # run_b is NOT created
     out_html = tmp_path / "cmp.html"
-    result = main([
-        "compare", "run_a", "run_b",
-        "--model-root", str(model_root),
-        "--output", str(out_html),
-    ])
+    result = main(
+        [
+            "compare",
+            "run_a",
+            "run_b",
+            "--model-root",
+            str(model_root),
+            "--output",
+            str(out_html),
+        ]
+    )
     assert result == 1
     assert "not found" in capsys.readouterr().out.lower()
 
@@ -2899,10 +3369,15 @@ def test_cli_compare_run_id_requires_model_root(
 ) -> None:
     """Run-ID mode without --model-root returns 1 with clear error."""
     out_html = tmp_path / "cmp.html"
-    result = main([
-        "compare", "run_a", "run_b",
-        "--output", str(out_html),
-    ])
+    result = main(
+        [
+            "compare",
+            "run_a",
+            "run_b",
+            "--output",
+            str(out_html),
+        ]
+    )
     assert result == 1
     assert "model-root" in capsys.readouterr().out.lower()
 
@@ -2940,17 +3415,20 @@ def _populate_history_model_root(model_root: Path, n: int = 4) -> None:
         }
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "run_id": run_id,
-                "timestamp_utc": ts.isoformat(),
-                "status": status,
-                "sample_count": 2,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "timestamp_utc": ts.isoformat(),
+                        "status": status,
+                        "sample_count": 2,
+                    }
+                )
+                + "\n"
+            )
 
 
-def test_cli_history_shows_runs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_history_shows_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """history command prints run table for a model_root."""
     model_root = tmp_path / "model"
     _populate_history_model_root(model_root, n=3)
@@ -2961,9 +3439,7 @@ def test_cli_history_shows_runs(
     assert "PASS" in out
 
 
-def test_cli_history_filters_by_status(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_history_filters_by_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--status PASS hides FAIL runs from output."""
     model_root = tmp_path / "model"
     _populate_history_model_root(model_root, n=4)  # 2 PASS, 2 FAIL
@@ -2974,30 +3450,38 @@ def test_cli_history_filters_by_status(
     assert "PASS" in out
 
 
-def test_cli_history_filters_by_since(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_history_filters_by_since(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--since filters out runs before the given date."""
     model_root = tmp_path / "model"
     _populate_history_model_root(model_root, n=4)  # runs on 2026-02-01 to 2026-02-04
     # Only runs on 2026-02-03 or later (2 runs)
-    result = main([
-        "history", "--model-root", str(model_root), "--since", "2026-02-03",
-    ])
+    result = main(
+        [
+            "history",
+            "--model-root",
+            str(model_root),
+            "--since",
+            "2026-02-03",
+        ]
+    )
     assert result == 0
     out = capsys.readouterr().out
     assert "Showing 2 run(s)" in out
 
 
-def test_cli_history_output_format_json(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_history_output_format_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--output-format json emits valid JSON list of runs."""
     model_root = tmp_path / "model"
     _populate_history_model_root(model_root, n=2)
-    result = main([
-        "history", "--model-root", str(model_root), "--output-format", "json",
-    ])
+    result = main(
+        [
+            "history",
+            "--model-root",
+            str(model_root),
+            "--output-format",
+            "json",
+        ]
+    )
     assert result == 0
     runs = json.loads(capsys.readouterr().out)
     assert isinstance(runs, list)
@@ -3016,15 +3500,19 @@ def test_cli_history_empty_model_root_returns_one(
     assert "no runs" in capsys.readouterr().out.lower()
 
 
-def test_cli_history_last_n_limits(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_history_last_n_limits(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--last-n limits the number of runs shown."""
     model_root = tmp_path / "model"
     _populate_history_model_root(model_root, n=5)
-    result = main([
-        "history", "--model-root", str(model_root), "--last-n", "2",
-    ])
+    result = main(
+        [
+            "history",
+            "--model-root",
+            str(model_root),
+            "--last-n",
+            "2",
+        ]
+    )
     assert result == 0
     out = capsys.readouterr().out
     assert "Showing 2 run(s)" in out
@@ -3041,11 +3529,15 @@ def test_cli_ci_flag_suppresses_progress(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--ci",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--ci",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["progress_callback"] is None
 
@@ -3059,10 +3551,14 @@ def test_cli_ci_env_auto_detected(tmp_path: Path) -> None:
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
         with patch.dict(os.environ, {"CI": "true"}, clear=False):
-            main([
-                "run", str(suite_file),
-                "--artifacts-dir", str(tmp_path / "art"),
-            ])
+            main(
+                [
+                    "run",
+                    str(suite_file),
+                    "--artifacts-dir",
+                    str(tmp_path / "art"),
+                ]
+            )
     _, kwargs = mock_rs.call_args
     assert kwargs["progress_callback"] is None
 
@@ -3079,21 +3575,27 @@ def test_cli_github_actions_annotations_on_gate_failure(
         **_mock_run_suite_result(tmp_path),
         "status": "FAIL",
         "gate_failed": True,
-        "gates": [{
-            "metric": "vbench_temporal.score",
-            "op": ">=",
-            "value": 0.9,
-            "actual": 0.5,
-            "passed": False,
-        }],
+        "gates": [
+            {
+                "metric": "vbench_temporal.score",
+                "op": ">=",
+                "value": 0.9,
+                "actual": 0.5,
+                "passed": False,
+            }
+        ],
     }
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = failing_result
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
-            main([
-                "run", str(suite_file),
-                "--artifacts-dir", str(tmp_path / "art"),
-            ])
+            main(
+                [
+                    "run",
+                    str(suite_file),
+                    "--artifacts-dir",
+                    str(tmp_path / "art"),
+                ]
+            )
     out = capsys.readouterr().out
     assert "::error::" in out
     assert "vbench_temporal.score" in out
@@ -3123,12 +3625,17 @@ def test_cli_watch_runs_multiple_iterations(
 
     with patch("temporalci.cli.run_suite", side_effect=_fake_run_suite):
         with patch("time.sleep"):  # don't actually sleep
-            result = main([
-                "run", str(suite_file),
-                "--artifacts-dir", str(tmp_path / "art"),
-                "--watch", "5",
-                "--no-progress",
-            ])
+            result = main(
+                [
+                    "run",
+                    str(suite_file),
+                    "--artifacts-dir",
+                    str(tmp_path / "art"),
+                    "--watch",
+                    "5",
+                    "--no-progress",
+                ]
+            )
 
     assert result == 0  # KeyboardInterrupt → graceful exit 0
     assert call_count >= 1
@@ -3148,12 +3655,17 @@ def test_cli_watch_stopped_message_on_interrupt(
 
     with patch("temporalci.cli.run_suite", side_effect=_fake):
         with patch("time.sleep"):
-            result = main([
-                "run", str(suite_file),
-                "--artifacts-dir", str(tmp_path / "art"),
-                "--watch", "10",
-                "--no-progress",
-            ])
+            result = main(
+                [
+                    "run",
+                    str(suite_file),
+                    "--artifacts-dir",
+                    str(tmp_path / "art"),
+                    "--watch",
+                    "10",
+                    "--no-progress",
+                ]
+            )
 
     assert result == 0
     assert "stopped" in capsys.readouterr().out.lower()
@@ -3171,11 +3683,15 @@ def test_cli_watch_not_active_without_flag(tmp_path: Path) -> None:
         return _mock_run_suite_result(tmp_path)
 
     with patch("temporalci.cli.run_suite", side_effect=_fake):
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
 
     assert call_count == 1
 
@@ -3217,17 +3733,20 @@ def _populate_model_root_for_tuning(model_root: Path, n_pass: int = 5) -> None:
         }
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "run_id": run_id,
-                "status": "PASS",
-                "timestamp_utc": ts.isoformat(),
-                "sample_count": 2,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "status": "PASS",
+                        "timestamp_utc": ts.isoformat(),
+                        "sample_count": 2,
+                    }
+                )
+                + "\n"
+            )
 
 
-def test_cli_tune_gates_exits_zero(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tune_gates_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """tune-gates exits 0 when PASS runs are found."""
     model_root = tmp_path / "model"
     _populate_model_root_for_tuning(model_root, n_pass=5)
@@ -3269,21 +3788,35 @@ def test_cli_tune_gates_no_pass_runs_returns_one(
     run_dir = model_root / run_id
     run_dir.mkdir()
     payload = {
-        "run_id": run_id, "status": "FAIL", "timestamp_utc": ts.isoformat(),
-        "sample_count": 1, "gate_failed": True, "regression_failed": False,
-        "metrics": {}, "gates": [], "regressions": [], "samples": [],
+        "run_id": run_id,
+        "status": "FAIL",
+        "timestamp_utc": ts.isoformat(),
+        "sample_count": 1,
+        "gate_failed": True,
+        "regression_failed": False,
+        "metrics": {},
+        "gates": [],
+        "regressions": [],
+        "samples": [],
     }
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as fh:
-        fh.write(json.dumps({"run_id": run_id, "status": "FAIL",
-                              "timestamp_utc": ts.isoformat(), "sample_count": 1}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "FAIL",
+                    "timestamp_utc": ts.isoformat(),
+                    "sample_count": 1,
+                }
+            )
+            + "\n"
+        )
     result = main(["tune-gates", "--model-root", str(model_root)])
     assert result == 1
 
 
-def test_cli_tune_gates_metric_filter(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_tune_gates_metric_filter(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--metric filters output to only the specified metric prefix."""
     model_root = tmp_path / "model"
     _populate_model_root_for_tuning(model_root, n_pass=3)
@@ -3303,12 +3836,17 @@ def test_cli_run_env_wired(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--env", "prod",
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--env",
+                "prod",
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["env"] == "prod"
 
@@ -3319,11 +3857,15 @@ def test_cli_run_env_default_none(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs.get("env") is None
 
@@ -3349,24 +3891,37 @@ def _populate_artifacts_dir(tmp_path: Path) -> Path:
                 run_dir.mkdir()
                 status = "PASS" if model == "model_x" else "FAIL"
                 payload = {
-                    "run_id": run_id, "timestamp_utc": ts.isoformat(),
-                    "project": proj, "suite_name": suite, "model_name": model,
-                    "status": status, "sample_count": 1,
-                    "gate_failed": status == "FAIL", "regression_failed": False,
-                    "metrics": {}, "gates": [], "regressions": [], "samples": [],
+                    "run_id": run_id,
+                    "timestamp_utc": ts.isoformat(),
+                    "project": proj,
+                    "suite_name": suite,
+                    "model_name": model,
+                    "status": status,
+                    "sample_count": 1,
+                    "gate_failed": status == "FAIL",
+                    "regression_failed": False,
+                    "metrics": {},
+                    "gates": [],
+                    "regressions": [],
+                    "samples": [],
                 }
                 (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
                 with (model_root / "runs.jsonl").open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps({
-                        "run_id": run_id, "status": status,
-                        "timestamp_utc": ts.isoformat(), "sample_count": 1,
-                    }) + "\n")
+                    fh.write(
+                        json.dumps(
+                            {
+                                "run_id": run_id,
+                                "status": status,
+                                "timestamp_utc": ts.isoformat(),
+                                "sample_count": 1,
+                            }
+                        )
+                        + "\n"
+                    )
     return artifacts
 
 
-def test_cli_summary_shows_models(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_summary_shows_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """summary lists all models from all projects/suites."""
     artifacts = _populate_artifacts_dir(tmp_path)
     result = main(["summary", "--artifacts-dir", str(artifacts)])
@@ -3386,9 +3941,7 @@ def test_cli_summary_exit_one_when_any_fail(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_cli_summary_json_output(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_summary_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--output-format json emits valid JSON tree."""
     artifacts = _populate_artifacts_dir(tmp_path)
     main(["summary", "--artifacts-dir", str(artifacts), "--output-format", "json"])
@@ -3398,9 +3951,7 @@ def test_cli_summary_json_output(
     assert "proj_a" in data
 
 
-def test_cli_summary_empty_returns_one(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_summary_empty_returns_one(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """summary returns 1 when artifacts-dir has no runs."""
     empty = tmp_path / "empty_arts"
     empty.mkdir()
@@ -3472,12 +4023,17 @@ def test_cli_run_adapter_timeout_wired(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--adapter-timeout", "5.0",
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--adapter-timeout",
+                "5.0",
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["adapter_timeout"] == 5.0
 
@@ -3488,11 +4044,15 @@ def test_cli_run_adapter_timeout_default_none(tmp_path: Path) -> None:
     _write_minimal_suite(suite_file)
     with patch("temporalci.cli.run_suite") as mock_rs:
         mock_rs.return_value = _mock_run_suite_result(tmp_path)
-        main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--no-progress",
-        ])
+        main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--no-progress",
+            ]
+        )
     _, kwargs = mock_rs.call_args
     assert kwargs["adapter_timeout"] is None
 
@@ -3513,12 +4073,17 @@ def test_cli_run_include_model_filters(tmp_path: Path) -> None:
         return _make_mock_run_result(tmp_path, kwargs["model_name"])
 
     with patch("temporalci.cli.run_suite", side_effect=_fake_run_suite):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--include-model", "alpha",
-            "--no-progress",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--include-model",
+                "alpha",
+                "--no-progress",
+            ]
+        )
     assert result == 0
     assert called_with == ["alpha"]
 
@@ -3534,12 +4099,17 @@ def test_cli_run_exclude_model_skips(tmp_path: Path) -> None:
         return _make_mock_run_result(tmp_path, kwargs["model_name"])
 
     with patch("temporalci.cli.run_suite", side_effect=_fake_run_suite):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--exclude-model", "beta",
-            "--no-progress",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--exclude-model",
+                "beta",
+                "--no-progress",
+            ]
+        )
     assert result == 0
     assert "beta" not in called_with
     assert "alpha" in called_with
@@ -3551,12 +4121,17 @@ def test_cli_run_no_model_match_returns_error(
     """All models excluded → exits 1 with config error message."""
     suite_file = tmp_path / "suite.yaml"
     _write_two_model_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--include-model", "gamma",  # not in suite
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--include-model",
+            "gamma",  # not in suite
+            "--no-progress",
+        ]
+    )
     assert result == 1
     out = capsys.readouterr().out
     assert "no models match" in out.lower()
@@ -3600,18 +4175,21 @@ def _populate_model_root_for_metrics(model_root: Path) -> str:
     }
     (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
     with (model_root / "runs.jsonl").open("w", encoding="utf-8") as fh:
-        fh.write(json.dumps({
-            "run_id": run_id,
-            "status": "PASS",
-            "timestamp_utc": ts.isoformat(),
-            "sample_count": 2,
-        }) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "PASS",
+                    "timestamp_utc": ts.isoformat(),
+                    "sample_count": 2,
+                }
+            )
+            + "\n"
+        )
     return run_id
 
 
-def test_cli_metrics_show_latest_run(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_metrics_show_latest_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """metrics-show displays run info for the latest run when no --run-id given."""
     model_root = tmp_path / "model"
     run_id = _populate_model_root_for_metrics(model_root)
@@ -3656,9 +4234,7 @@ def test_cli_metrics_show_missing_run_id(
     assert "not found" in out.lower()
 
 
-def test_cli_metrics_show_no_runs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_metrics_show_no_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """metrics-show returns 1 when there are no runs in model-root."""
     model_root = tmp_path / "model"
     model_root.mkdir()
@@ -3684,15 +4260,22 @@ def test_cli_gate_override_replaces_value(tmp_path: Path) -> None:
         return _mock_run_suite_result(tmp_path)
 
     with patch("temporalci.cli.run_suite", side_effect=_capture):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--gate-override", "vbench_temporal.score >= 0.99",
-            "--no-progress",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--gate-override",
+                "vbench_temporal.score >= 0.99",
+                "--no-progress",
+            ]
+        )
     assert result == 0
     called_suite = received_suite[0]
-    gate = next(g for g in called_suite.gates if g.metric == "vbench_temporal.score" and g.op == ">=")
+    gate = next(
+        g for g in called_suite.gates if g.metric == "vbench_temporal.score" and g.op == ">="
+    )
     assert gate.value == pytest.approx(0.99)
 
 
@@ -3707,12 +4290,17 @@ def test_cli_gate_override_adds_new_gate(tmp_path: Path) -> None:
         return _mock_run_suite_result(tmp_path)
 
     with patch("temporalci.cli.run_suite", side_effect=_capture):
-        result = main([
-            "run", str(suite_file),
-            "--artifacts-dir", str(tmp_path / "art"),
-            "--gate-override", "new_metric.score >= 0.80",
-            "--no-progress",
-        ])
+        result = main(
+            [
+                "run",
+                str(suite_file),
+                "--artifacts-dir",
+                str(tmp_path / "art"),
+                "--gate-override",
+                "new_metric.score >= 0.80",
+                "--no-progress",
+            ]
+        )
     assert result == 0
     called_suite = received_suite[0]
     metrics = [g.metric for g in called_suite.gates]
@@ -3725,12 +4313,17 @@ def test_cli_gate_override_invalid_spec_returns_error(
     """Malformed --gate-override value causes exit 1 with config error."""
     suite_file = tmp_path / "suite.yaml"
     _write_minimal_suite(suite_file)
-    result = main([
-        "run", str(suite_file),
-        "--artifacts-dir", str(tmp_path / "art"),
-        "--gate-override", "bad-spec",  # missing OP and VALUE
-        "--no-progress",
-    ])
+    result = main(
+        [
+            "run",
+            str(suite_file),
+            "--artifacts-dir",
+            str(tmp_path / "art"),
+            "--gate-override",
+            "bad-spec",  # missing OP and VALUE
+            "--no-progress",
+        ]
+    )
     assert result == 1
     out = capsys.readouterr().out
     assert "config error" in out.lower()

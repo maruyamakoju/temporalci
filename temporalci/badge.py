@@ -6,12 +6,13 @@ Public API
 ----------
 write_badge_svg(path, status)   ->  None
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-_PASS_COLOR = "#2da44e"   # GitHub green
-_FAIL_COLOR = "#cf222e"   # GitHub red
+_PASS_COLOR = "#2da44e"  # GitHub green
+_FAIL_COLOR = "#cf222e"  # GitHub red
 _LABEL_COLOR = "#555"
 
 # Shields.io-compatible flat badge template.

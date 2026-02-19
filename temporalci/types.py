@@ -33,7 +33,7 @@ class GateSpec:
     value: Any
     method: str = "threshold"
     params: dict[str, Any] = field(default_factory=dict)
-    window: int = 0        # rolling window size (0 = disabled)
+    window: int = 0  # rolling window size (0 = disabled)
     min_failures: int = 0  # gate fails only when this many of last `window` runs failed
 
 

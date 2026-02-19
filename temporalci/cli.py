@@ -232,10 +232,7 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         type=float,
         default=None,
         metavar="SECONDS",
-        help=(
-            "Continuous mode: re-run the suite every SECONDS seconds. "
-            "Press Ctrl+C to stop."
-        ),
+        help=("Continuous mode: re-run the suite every SECONDS seconds. Press Ctrl+C to stop."),
     )
 
     # Apply .temporalci.yaml defaults to run subcommand (CLI args still override)
@@ -284,7 +281,9 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Pass-through args for 'calibrate|apply|check'",
     )
 
-    status_cmd = sub.add_parser("status", help="Show recent run history for a model or suite in the terminal")
+    status_cmd = sub.add_parser(
+        "status", help="Show recent run history for a model or suite in the terminal"
+    )
     status_target = status_cmd.add_mutually_exclusive_group(required=True)
     status_target.add_argument(
         "--model-root",
@@ -481,9 +480,7 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Output report path (default: report.html inside run-dir)",
     )
 
-    init_cmd = sub.add_parser(
-        "init", help="Scaffold a new suite.yaml with sensible defaults"
-    )
+    init_cmd = sub.add_parser("init", help="Scaffold a new suite.yaml with sensible defaults")
     init_cmd.add_argument(
         "--project",
         default="my-project",
@@ -514,9 +511,7 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Overwrite output file if it already exists",
     )
 
-    annotate_cmd = sub.add_parser(
-        "annotate", help="Attach a text note to an existing run"
-    )
+    annotate_cmd = sub.add_parser("annotate", help="Attach a text note to an existing run")
     annotate_cmd.add_argument(
         "--model-root",
         required=True,
@@ -724,9 +719,7 @@ def _apply_gate_overrides(suite: Any, overrides: list[str]) -> Any:
     for spec_str in overrides:
         parts = spec_str.strip().split(None, 2)
         if len(parts) != 3:
-            raise ValueError(
-                f"--gate-override must be 'METRIC OP VALUE', got: {spec_str!r}"
-            )
+            raise ValueError(f"--gate-override must be 'METRIC OP VALUE', got: {spec_str!r}")
         metric, op, value_str = parts
         try:
             value: Any = float(value_str)
@@ -891,7 +884,7 @@ def main(argv: list[str] | None = None) -> int:
 
         def _cb(current: int, total: int, test_id: str, prompt: str, seed: int) -> None:
             short = (prompt[:55] + "…") if len(prompt) > 55 else prompt
-            print(f"{prefix}[{current}/{total}] {test_id}  \"{short}\"  seed={seed}", flush=True)
+            print(f'{prefix}[{current}/{total}] {test_id}  "{short}"  seed={seed}', flush=True)
 
         return _cb
 
@@ -949,7 +942,9 @@ def main(argv: list[str] | None = None) -> int:
         from temporalci.adapters import build_adapter
         from temporalci.config import select_model
 
-        print(f"dry-run: {len(model_names)} model(s)  project={suite.project}  suite={suite.suite_name}")
+        print(
+            f"dry-run: {len(model_names)} model(s)  project={suite.project}  suite={suite.suite_name}"
+        )
         all_ok = True
         for mname in model_names:
             print(f"\n  ── {mname} ──")
@@ -1044,6 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
             if prune_keep is not None:
                 try:
                     from temporalci.prune import prune_model_runs
+
                     run_dir = Path(str(result.get("run_dir", "")))
                     prune_result = prune_model_runs(run_dir.parent, keep_last=prune_keep)
                     mb = prune_result["bytes_freed"] / 1_048_576

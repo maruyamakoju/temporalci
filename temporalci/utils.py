@@ -18,6 +18,7 @@ from typing import Any
 # Time helpers
 # ---------------------------------------------------------------------------
 
+
 def utc_now() -> datetime:
     """Return the current UTC time as an aware :class:`datetime`."""
     return datetime.now(timezone.utc)
@@ -81,6 +82,7 @@ def as_int(value: Any, *, default: int, minimum: int) -> int:
 # Path resolution
 # ---------------------------------------------------------------------------
 
+
 def resolve_path(raw_path: str, *, suite_dir: Path) -> Path:
     """Resolve *raw_path* relative to *suite_dir*, falling back to cwd.
 
@@ -104,6 +106,7 @@ def resolve_path(raw_path: str, *, suite_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Prompt normalization / deduplication
 # ---------------------------------------------------------------------------
+
 
 def normalize_prompt(text: str) -> str:
     """Collapse whitespace and lowercase *text* for comparison."""
@@ -129,6 +132,7 @@ def dedupe_prompts(prompts: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # JSON I/O
 # ---------------------------------------------------------------------------
+
 
 def read_json_dict(path: Path) -> dict[str, Any] | None:
     """Read *path* as JSON and return the top-level dict, or ``None`` on error."""

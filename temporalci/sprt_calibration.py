@@ -415,13 +415,16 @@ def _run_calibrate_with_args(args: argparse.Namespace) -> int:
         )
         baseline_payload = _load_run_payload(baseline_path)
     else:
-        baseline_payload = cast("dict[str, Any]", run_suite(
-            suite=suite,
-            model_name=model.name,
-            artifacts_dir=artifacts_dir,
-            baseline_mode="none",
-            fail_on_regression=False,
-        ))
+        baseline_payload = cast(
+            "dict[str, Any]",
+            run_suite(
+                suite=suite,
+                model_name=model.name,
+                artifacts_dir=artifacts_dir,
+                baseline_mode="none",
+                fail_on_regression=False,
+            ),
+        )
 
     baseline_metrics = baseline_payload.get("metrics")
     if not isinstance(baseline_metrics, dict):

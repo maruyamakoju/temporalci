@@ -85,7 +85,9 @@ def test_prune_dry_run_does_not_delete(tmp_path: Path) -> None:
     assert result["deleted"] == 2  # would-be deleted count still reported
     # jsonl not rewritten
     entries = [
-        ln for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if ln.strip()
+        ln
+        for ln in (model_root / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
     ]
     assert len(entries) == 4
 

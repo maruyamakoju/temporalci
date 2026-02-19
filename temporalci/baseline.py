@@ -8,6 +8,7 @@ Public names (used by ``engine.py``):
     _read_tags, _write_tag, _load_previous_run,
     _average_metrics_dicts, _validate_baseline_mode
 """
+
 from __future__ import annotations
 
 import json
@@ -54,9 +55,7 @@ def _average_metrics_dicts(dicts: list[dict[str, Any]]) -> dict[str, Any]:
         values = [d[k] for d in dicts if k in d]
         if all(isinstance(v, dict) for v in values):
             result[k] = _average_metrics_dicts(values)
-        elif all(
-            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values
-        ):
+        elif all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
             result[k] = sum(float(v) for v in values) / len(values)
         else:
             result[k] = values[-1]
@@ -85,8 +84,7 @@ def _validate_baseline_mode(baseline_mode: str) -> None:
         )
     available = ", ".join(sorted(BASELINE_MODES))
     raise ValueError(
-        f"invalid baseline_mode '{baseline_mode}'. "
-        f"choose: {available}, tag:<name>, or rolling:<N>"
+        f"invalid baseline_mode '{baseline_mode}'. choose: {available}, tag:<name>, or rolling:<N>"
     )
 
 

@@ -962,6 +962,7 @@ def test_tag_is_written_to_tags_json(tmp_path: Path) -> None:
     )
     model_root = Path(result["run_dir"]).parent
     import json as _json
+
     tags = _json.loads((model_root / "tags.json").read_text(encoding="utf-8"))
     assert tags.get("gold") == result["run_id"]
 
@@ -1021,6 +1022,7 @@ def test_tag_overwrites_existing_tag(tmp_path: Path) -> None:
 
     model_root = Path(r2["run_dir"]).parent
     import json as _json
+
     tags = _json.loads((model_root / "tags.json").read_text(encoding="utf-8"))
     assert tags["gold"] == r2["run_id"]
     assert tags["gold"] != r1["run_id"]
@@ -1035,6 +1037,7 @@ def test_invalid_baseline_mode_raises(tmp_path: Path) -> None:
     )
     suite = load_suite(suite_path)
     import pytest as _pytest
+
     with _pytest.raises(ValueError, match="invalid baseline_mode"):
         run_suite(
             suite=suite,
@@ -1078,12 +1081,8 @@ def test_workers_result_order_is_deterministic(tmp_path: Path) -> None:
         threshold=0.1,
     )
     suite = load_suite(suite_path)
-    r_seq = run_suite(
-        suite=suite, artifacts_dir=tmp_path / "a1", baseline_mode="none", workers=1
-    )
-    r_par = run_suite(
-        suite=suite, artifacts_dir=tmp_path / "a2", baseline_mode="none", workers=4
-    )
+    r_seq = run_suite(suite=suite, artifacts_dir=tmp_path / "a1", baseline_mode="none", workers=1)
+    r_par = run_suite(suite=suite, artifacts_dir=tmp_path / "a2", baseline_mode="none", workers=4)
     assert r_seq["status"] == r_par["status"]
     assert r_seq["sample_count"] == r_par["sample_count"]
 
@@ -1204,16 +1203,12 @@ def test_skipped_count_zero_on_normal_run(tmp_path: Path) -> None:
 
 def test_rolling_baseline_uses_average_of_n_runs(tmp_path: Path) -> None:
     """rolling:2 averages the last 2 PASS runs as the baseline."""
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1)
     suite = load_suite(suite_path)
     artifacts = tmp_path / "artifacts"
     for _ in range(3):
         run_suite(suite=suite, artifacts_dir=artifacts, baseline_mode="none")
-    result = run_suite(
-        suite=suite, artifacts_dir=artifacts, baseline_mode="rolling:2"
-    )
+    result = run_suite(suite=suite, artifacts_dir=artifacts, baseline_mode="rolling:2")
     assert result["status"] == "PASS"
     assert result["baseline_run_id"] is not None
     assert result["baseline_run_id"].startswith("rolling:2")
@@ -1221,13 +1216,9 @@ def test_rolling_baseline_uses_average_of_n_runs(tmp_path: Path) -> None:
 
 def test_rolling_baseline_no_prior_runs_returns_no_baseline(tmp_path: Path) -> None:
     """rolling:3 with no prior runs → no baseline, run still completes."""
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1)
     suite = load_suite(suite_path)
-    result = run_suite(
-        suite=suite, artifacts_dir=tmp_path / "artifacts", baseline_mode="rolling:3"
-    )
+    result = run_suite(suite=suite, artifacts_dir=tmp_path / "artifacts", baseline_mode="rolling:3")
     assert result["baseline_run_id"] is None
     assert result["status"] == "PASS"
 
@@ -1236,18 +1227,12 @@ def test_rolling_baseline_invalid_n_raises(tmp_path: Path) -> None:
     """rolling:0 and rolling:foo raise ValueError."""
     import pytest as _pytest
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1)
     suite = load_suite(suite_path)
     with _pytest.raises(ValueError, match="rolling"):
-        run_suite(
-            suite=suite, artifacts_dir=tmp_path / "a1", baseline_mode="rolling:0"
-        )
+        run_suite(suite=suite, artifacts_dir=tmp_path / "a1", baseline_mode="rolling:0")
     with _pytest.raises(ValueError, match="rolling"):
-        run_suite(
-            suite=suite, artifacts_dir=tmp_path / "a2", baseline_mode="rolling:foo"
-        )
+        run_suite(suite=suite, artifacts_dir=tmp_path / "a2", baseline_mode="rolling:foo")
 
 
 # ---------------------------------------------------------------------------
@@ -1260,9 +1245,7 @@ def test_fail_on_skip_false_passes_despite_skips(tmp_path: Path) -> None:
     from unittest.mock import patch
     from temporalci.adapters.mock import MockAdapter
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.0
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.0)
     suite = load_suite(suite_path)
     with patch.object(MockAdapter, "generate", side_effect=RuntimeError("fail")):
         result = run_suite(
@@ -1281,9 +1264,7 @@ def test_fail_on_skip_true_fails_when_samples_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from temporalci.adapters.mock import MockAdapter
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.0
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.0)
     suite = load_suite(suite_path)
     with patch.object(MockAdapter, "generate", side_effect=RuntimeError("fail")):
         result = run_suite(
@@ -1299,9 +1280,7 @@ def test_fail_on_skip_true_fails_when_samples_skipped(tmp_path: Path) -> None:
 
 def test_fail_on_skip_true_no_skips_is_pass(tmp_path: Path) -> None:
     """fail_on_skip=True with all samples succeeding → PASS."""
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1)
     suite = load_suite(suite_path)
     result = run_suite(
         suite=suite,
@@ -1322,9 +1301,7 @@ def test_inter_sample_delay_called_in_parallel_mode(tmp_path: Path) -> None:
     """inter_sample_delay > 0 causes time.sleep between dispatches when workers > 1."""
     from unittest.mock import patch as _patch
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1", "p2"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1", "p2"], threshold=0.1)
     suite = load_suite(suite_path)
     with _patch("time.sleep") as mock_sleep:
         result = run_suite(
@@ -1344,9 +1321,7 @@ def test_inter_sample_delay_not_called_in_sequential_mode(tmp_path: Path) -> Non
     """inter_sample_delay is ignored when workers=1 (sequential path)."""
     from unittest.mock import patch as _patch
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1", "p2"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1", "p2"], threshold=0.1)
     suite = load_suite(suite_path)
     with _patch("time.sleep") as mock_sleep:
         run_suite(
@@ -1363,9 +1338,7 @@ def test_inter_sample_delay_zero_does_not_sleep(tmp_path: Path) -> None:
     """inter_sample_delay=0 (default) never calls time.sleep even with workers > 1."""
     from unittest.mock import patch as _patch
 
-    suite_path = _write_suite(
-        tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1
-    )
+    suite_path = _write_suite(tmp_path, quality_shift=0.3, prompts=["p1"], threshold=0.1)
     suite = load_suite(suite_path)
     with _patch("time.sleep") as mock_sleep:
         run_suite(
@@ -1515,7 +1488,9 @@ def test_notify_on_change_does_not_fire_on_repeated_pass(tmp_path: Path) -> None
 # ---------------------------------------------------------------------------
 
 
-def _write_windowed_suite(tmp_path: Path, *, threshold: float, window: int, min_failures: int) -> Path:
+def _write_windowed_suite(
+    tmp_path: Path, *, threshold: float, window: int, min_failures: int
+) -> Path:
     """Suite YAML with a single windowed gate."""
     import yaml as _yaml
 

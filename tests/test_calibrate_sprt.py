@@ -186,9 +186,7 @@ def test_calibrate_main_writes_summary_json(tmp_path: Path, monkeypatch: Any) ->
     assert payload["recommended_params"]["min_pairs"] >= 4
 
 
-def test_calibrate_main_apply_out_writes_calibrated_suite(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
+def test_calibrate_main_apply_out_writes_calibrated_suite(tmp_path: Path, monkeypatch: Any) -> None:
     suite_path = _write_suite(tmp_path)
     apply_out = tmp_path / "suite_calibrated.yaml"
 

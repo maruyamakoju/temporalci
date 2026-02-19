@@ -45,12 +45,15 @@ def _make_model(
         (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
         with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
             f.write(
-                json.dumps({
-                    "run_id": run_id,
-                    "status": run_status,
-                    "timestamp_utc": ts.isoformat(),
-                    "sample_count": 3,
-                }) + "\n"
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "status": run_status,
+                        "timestamp_utc": ts.isoformat(),
+                        "sample_count": 3,
+                    }
+                )
+                + "\n"
             )
     return model_root
 

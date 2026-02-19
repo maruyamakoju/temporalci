@@ -3,6 +3,7 @@
 All ``_cmd_*`` functions, ``_print_summary``, and related helpers live here
 so that ``cli.py`` can stay focused on parser construction and ``main()``.
 """
+
 from __future__ import annotations
 
 import json
@@ -102,11 +103,13 @@ def _cmd_doctor(_args: Any) -> int:
     try:
         commit = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL, text=True,
+            stderr=subprocess.DEVNULL,
+            text=True,
         ).strip()
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            stderr=subprocess.DEVNULL, text=True,
+            stderr=subprocess.DEVNULL,
+            text=True,
         ).strip()
         _ok(f"git: {commit} ({branch})")
     except Exception:  # noqa: BLE001
@@ -114,11 +117,13 @@ def _cmd_doctor(_args: Any) -> int:
 
     # Adapters
     from temporalci.adapters import available_adapters
+
     adapters = available_adapters()
     _ok(f"adapters ({len(adapters)}): {', '.join(adapters)}")
 
     # Metrics
     from temporalci.metrics import available_metrics
+
     metrics_list = available_metrics()
     _ok(f"metrics ({len(metrics_list)}): {', '.join(metrics_list)}")
 
@@ -129,6 +134,7 @@ def _cmd_doctor(_args: Any) -> int:
         if cfg_path.exists():
             try:
                 import yaml as _yaml
+
                 data = _yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
                 run_cfg = data.get("run", {}) if isinstance(data, dict) else {}
                 summary = "  ".join(f"{k}={v}" for k, v in list(run_cfg.items())[:5])
@@ -307,10 +313,7 @@ def _cmd_repair_index(args: Any) -> int:
         print(f"config error: model-root not found: {model_root}")
         return 1
 
-    run_dirs = sorted(
-        d for d in model_root.iterdir()
-        if d.is_dir() and (d / "run.json").exists()
-    )
+    run_dirs = sorted(d for d in model_root.iterdir() if d.is_dir() and (d / "run.json").exists())
     if not run_dirs:
         print(f"no run.json files found in {model_root}")
         return 1
@@ -320,12 +323,14 @@ def _cmd_repair_index(args: Any) -> int:
     for run_dir in run_dirs:
         try:
             payload = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-            entries.append({
-                "run_id": payload.get("run_id", run_dir.name),
-                "timestamp_utc": payload.get("timestamp_utc", ""),
-                "status": payload.get("status", "UNKNOWN"),
-                "sample_count": payload.get("sample_count", 0),
-            })
+            entries.append(
+                {
+                    "run_id": payload.get("run_id", run_dir.name),
+                    "timestamp_utc": payload.get("timestamp_utc", ""),
+                    "status": payload.get("status", "UNKNOWN"),
+                    "sample_count": payload.get("sample_count", 0),
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"  warning: skipped {run_dir.name}: {exc}")
             skipped += 1
@@ -400,7 +405,9 @@ def _cmd_suite_status(args: Any) -> int:
         if latest_status != "PASS":
             any_fail = True
         recent = " ".join("P" if s == "PASS" else "F" for s in statuses[-10:])
-        print(f"  {model_name:<{name_w}}  {len(runs):>5}  {n_pass:>4}  {n_fail:>4}  {latest_status:<6}  [{recent}]")
+        print(
+            f"  {model_name:<{name_w}}  {len(runs):>5}  {n_pass:>4}  {n_fail:>4}  {latest_status:<6}  [{recent}]"
+        )
 
     return 1 if any_fail else 0
 
@@ -426,6 +433,7 @@ def _cmd_status(args: Any) -> int:
     # CSV output: delegate to export_runs
     if output_format == "csv":
         from temporalci.export import export_runs
+
         out_path = Path(args.output) if getattr(args, "output", None) else None
         if out_path is None:
             print("config error: --output PATH is required for --output-format csv")
@@ -482,7 +490,11 @@ def _cmd_status(args: Any) -> int:
                 return
             for k, v in o.items():
                 path = f"{prefix}.{k}" if prefix else k
-                if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+                if (
+                    isinstance(v, (int, float))
+                    and not isinstance(v, bool)
+                    and math.isfinite(float(v))
+                ):
                     result[path] = float(v)
                 elif isinstance(v, dict):
                     _walk(v, path)
@@ -497,7 +509,9 @@ def _cmd_status(args: Any) -> int:
         print()
         verbose = getattr(args, "verbose", False)
         # Default: only paths with ≤1 dot (e.g. "vbench_temporal.score" not "...dims.motion_smoothness")
-        display = all_metrics if verbose else {k: v for k, v in all_metrics.items() if k.count(".") <= 1}
+        display = (
+            all_metrics if verbose else {k: v for k, v in all_metrics.items() if k.count(".") <= 1}
+        )
         if display:
             label = "Latest metrics (all paths):" if verbose else "Latest metrics:"
             print(label)
@@ -602,7 +616,9 @@ def _cmd_compare(args: Any) -> int:
             candidate_run = json.loads(c_path.read_text(encoding="utf-8"))
             cmp = write_compare_report(out, baseline_run, candidate_run)
         else:
-            print("compare: use RUN_A RUN_B --model-root, --model-root (auto), or --baseline + --candidate")
+            print(
+                "compare: use RUN_A RUN_B --model-root, --model-root (auto), or --baseline + --candidate"
+            )
             return 1
 
         print(format_compare_text(cmp))
@@ -735,8 +751,7 @@ def _cmd_report(args: Any) -> int:
                 print(f"config error: model-root not found: {model_root}")
                 return 1
             run_dirs = sorted(
-                d for d in model_root.iterdir()
-                if d.is_dir() and (d / "run.json").exists()
+                d for d in model_root.iterdir() if d.is_dir() and (d / "run.json").exists()
             )
             if not run_dirs:
                 print(f"no runs found in {model_root}")
@@ -924,15 +939,17 @@ def _cmd_metrics_show(args: Any) -> int:
             windowed = "  [windowed]" if gate.get("windowed_pass") else ""
             actual = gate.get("actual", "?")
             print(
-                f"  {mark}  {str(gate.get('metric','')):<{col}}  "
-                f"{gate.get('op','')} {gate.get('value','')}  "
+                f"  {mark}  {str(gate.get('metric', '')):<{col}}  "
+                f"{gate.get('op', '')} {gate.get('value', '')}  "
                 f"actual={actual}{windowed}"
             )
             if verbose and "sprt" in gate:
                 sprt = gate["sprt"]
-                print(f"        SPRT decision={sprt.get('decision')}  "
-                      f"llr={sprt.get('llr')}  "
-                      f"paired={sprt.get('paired_count')}")
+                print(
+                    f"        SPRT decision={sprt.get('decision')}  "
+                    f"llr={sprt.get('llr')}  "
+                    f"paired={sprt.get('paired_count')}"
+                )
 
     # Regressions
     regressions = payload.get("regressions") or []
@@ -942,7 +959,7 @@ def _cmd_metrics_show(args: Any) -> int:
         for reg in regressions:
             mark = "REGRESSED" if reg.get("regressed") else "ok"
             print(
-                f"  {mark}  {reg.get('metric','')}  "
+                f"  {mark}  {reg.get('metric', '')}  "
                 f"baseline={reg.get('baseline')}  "
                 f"current={reg.get('current')}  "
                 f"delta={reg.get('delta')}"
@@ -1029,7 +1046,11 @@ def _cmd_tune_gates(args: Any) -> int:
                 return
             for k, v in obj.items():
                 path = f"{prefix}.{k}" if prefix else k
-                if isinstance(v, (int, float)) and not isinstance(v, bool) and _math.isfinite(float(v)):
+                if (
+                    isinstance(v, (int, float))
+                    and not isinstance(v, bool)
+                    and _math.isfinite(float(v))
+                ):
                     if target_metric is None or path.startswith(target_metric):
                         scores.setdefault(path, []).append(float(v))
                 elif isinstance(v, dict):
@@ -1072,7 +1093,7 @@ def _cmd_tune_gates(args: Any) -> int:
             op = ">="
             suggested = p_val
         print(f"  - metric: {path}")
-        print(f"    op: \"{op}\"")
+        print(f'    op: "{op}"')
         print(f"    value: {suggested:.6f}  # avg={avg_val:.4f}, n={len(vals)}")
     return 0
 
@@ -1121,7 +1142,9 @@ def _cmd_summary(args: Any) -> int:
                     "sample_count": latest.get("sample_count", 0),
                     "gate_failed": bool(latest.get("gate_failed")),
                 }
-                tree.setdefault(proj_dir.name, {}).setdefault(suite_dir.name, {})[model_dir.name] = info
+                tree.setdefault(proj_dir.name, {}).setdefault(suite_dir.name, {})[
+                    model_dir.name
+                ] = info
 
     if not tree:
         print(f"no runs found under {artifacts_dir}")
@@ -1147,8 +1170,11 @@ def _cmd_summary(args: Any) -> int:
 
     total = sum(len(m) for s in tree.values() for m in s.values())
     n_pass = sum(
-        1 for s in tree.values() for m in s.values()
-        for info in m.values() if info["status"] == "PASS"
+        1
+        for s in tree.values()
+        for m in s.values()
+        for info in m.values()
+        if info["status"] == "PASS"
     )
     print(f"{n_pass}/{total} models passing.")
     return 1 if any_fail else 0

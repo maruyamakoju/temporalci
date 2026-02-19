@@ -23,6 +23,7 @@ Covers branches not exercised by tests/test_calibrate_sprt.py:
   run_check_from_calibration — passing path (return 0), failing path (return 2)
   main()              — dispatches to calibrate_main
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -59,7 +60,9 @@ from temporalci.types import TestSpec as SuiteTestSpec
 # ---------------------------------------------------------------------------
 
 
-def _write_suite(path: Path, *, gate_metric: str = "vbench_temporal.dims.motion_smoothness") -> Path:
+def _write_suite(
+    path: Path, *, gate_metric: str = "vbench_temporal.dims.motion_smoothness"
+) -> Path:
     payload = {
         "version": 1,
         "project": "demo",
@@ -712,9 +715,7 @@ def test_run_calibration_inplace_and_out_conflict_returns_1(tmp_path: Path) -> N
     assert code == 1
 
 
-def test_run_calibration_with_existing_baseline_run_id(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
+def test_run_calibration_with_existing_baseline_run_id(tmp_path: Path, monkeypatch: Any) -> None:
     suite_path = _write_suite(tmp_path)
     baseline_run_id = "run_baseline"
     # Create baseline run.json at the path _resolve_run_json_path builds
@@ -829,12 +830,14 @@ def test_run_apply_missing_recommended_params_returns_1(tmp_path: Path) -> None:
     real_hash = hashlib.sha1(suite_path.read_bytes()).hexdigest()
     calib_path = tmp_path / "calib.json"
     calib_path.write_text(
-        json.dumps({
-            "schema_version": 1,
-            "suite_hash_sha1": real_hash,
-            "gate_metric": "score",
-            # no recommended_params key
-        }),
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suite_hash_sha1": real_hash,
+                "gate_metric": "score",
+                # no recommended_params key
+            }
+        ),
         encoding="utf-8",
     )
     code = run_apply_from_calibration(suite=suite_path, calibration_json=calib_path)
@@ -846,12 +849,14 @@ def test_run_apply_empty_gate_metric_returns_1(tmp_path: Path) -> None:
     real_hash = hashlib.sha1(suite_path.read_bytes()).hexdigest()
     calib_path = tmp_path / "calib.json"
     calib_path.write_text(
-        json.dumps({
-            "schema_version": 1,
-            "suite_hash_sha1": real_hash,
-            "gate_metric": "",  # empty → no target_metric
-            "recommended_params": {"sigma": 0.05},
-        }),
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suite_hash_sha1": real_hash,
+                "gate_metric": "",  # empty → no target_metric
+                "recommended_params": {"sigma": 0.05},
+            }
+        ),
         encoding="utf-8",
     )
     # No gate_metric arg either → should return 1
@@ -924,9 +929,7 @@ def test_run_check_from_calibration_passes_within_thresholds(tmp_path: Path) -> 
 
 def test_run_check_from_calibration_fails_when_sigma_too_high(tmp_path: Path) -> None:
     suite_path = _write_suite(tmp_path)
-    calib_path = _write_calibration_json(
-        tmp_path, suite_path=suite_path, recommended_sigma=0.5
-    )
+    calib_path = _write_calibration_json(tmp_path, suite_path=suite_path, recommended_sigma=0.5)
     code = run_check_from_calibration(
         calibration_json=calib_path,
         max_recommended_sigma=0.1,
@@ -936,9 +939,7 @@ def test_run_check_from_calibration_fails_when_sigma_too_high(tmp_path: Path) ->
 
 def test_run_check_from_calibration_fails_when_delta_count_too_low(tmp_path: Path) -> None:
     suite_path = _write_suite(tmp_path)
-    calib_path = _write_calibration_json(
-        tmp_path, suite_path=suite_path, delta_count=2
-    )
+    calib_path = _write_calibration_json(tmp_path, suite_path=suite_path, delta_count=2)
     code = run_check_from_calibration(
         calibration_json=calib_path,
         min_total_deltas=10,

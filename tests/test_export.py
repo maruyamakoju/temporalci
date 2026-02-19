@@ -271,12 +271,17 @@ def _populate_suite_root(tmp_path: Path, model_names: list[str], n_runs: int = 2
             }
             (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
             with (model_root / "runs.jsonl").open("a", encoding="utf-8") as f:
-                f.write(json.dumps({
-                    "run_id": run_id,
-                    "status": "PASS",
-                    "timestamp_utc": ts.isoformat(),
-                    "sample_count": 1,
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "run_id": run_id,
+                            "status": "PASS",
+                            "timestamp_utc": ts.isoformat(),
+                            "sample_count": 1,
+                        }
+                    )
+                    + "\n"
+                )
     return suite_root
 
 

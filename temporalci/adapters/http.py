@@ -102,4 +102,3 @@ class HttpAdapter(ModelAdapter):
         ).hexdigest()
         rng = random.Random(int(fingerprint[:8], 16))
         return [round(0.5 + (rng.random() - 0.5) * 0.2, 6) for _ in range(num_frames)]
-

@@ -5,6 +5,7 @@ Public API
 compare_runs(baseline, candidate)  ->  dict          (pure data, no I/O)
 write_compare_report(path, baseline, candidate)       (writes HTML)
 """
+
 from __future__ import annotations
 
 import math
@@ -51,14 +52,21 @@ def _per_sample_scores(metrics: dict[str, Any], metric_name: str) -> dict[str, f
         if not sid:
             continue
         score = row.get("score")
-        if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(float(score)):
+        if (
+            isinstance(score, (int, float))
+            and not isinstance(score, bool)
+            and math.isfinite(float(score))
+        ):
             scores[sid] = float(score)
         else:
             dims = row.get("dims")
             if isinstance(dims, dict):
                 vals = [
-                    float(v) for v in dims.values()
-                    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v))
+                    float(v)
+                    for v in dims.values()
+                    if isinstance(v, (int, float))
+                    and not isinstance(v, bool)
+                    and math.isfinite(float(v))
                 ]
                 if vals:
                     scores[sid] = sum(vals) / len(vals)
@@ -132,12 +140,10 @@ def _compare_gates(
     candidate: dict[str, Any],
 ) -> list[dict[str, Any]]:
     b_gate_map: dict[str, dict[str, Any]] = {
-        str(g.get("metric", "")): g
-        for g in (baseline.get("gates") or [])
-        if isinstance(g, dict)
+        str(g.get("metric", "")): g for g in (baseline.get("gates") or []) if isinstance(g, dict)
     }
     results: list[dict[str, Any]] = []
-    for cg in (candidate.get("gates") or []):
+    for cg in candidate.get("gates") or []:
         if not isinstance(cg, dict):
             continue
         metric = str(cg.get("metric", ""))
@@ -152,19 +158,21 @@ def _compare_gates(
             change = "new"
         else:
             change = "unchanged"
-        results.append({
-            "metric": metric,
-            "op": cg.get("op"),
-            "value": cg.get("value"),
-            "method": cg.get("method", "threshold"),
-            "baseline_actual": bg.get("actual"),
-            "candidate_actual": cg.get("actual"),
-            "baseline_passed": b_passed,
-            "candidate_passed": c_passed,
-            "change": change,
-            "sprt_baseline": bg.get("sprt"),
-            "sprt_candidate": cg.get("sprt"),
-        })
+        results.append(
+            {
+                "metric": metric,
+                "op": cg.get("op"),
+                "value": cg.get("value"),
+                "method": cg.get("method", "threshold"),
+                "baseline_actual": bg.get("actual"),
+                "candidate_actual": cg.get("actual"),
+                "baseline_passed": b_passed,
+                "candidate_passed": c_passed,
+                "change": change,
+                "sprt_baseline": bg.get("sprt"),
+                "sprt_candidate": cg.get("sprt"),
+            }
+        )
     return results
 
 
@@ -197,14 +205,16 @@ def _compare_samples(
     for sid, deltas in agg_deltas.items():
         avg = sum(deltas) / len(deltas)
         info = sample_info.get(sid, {})
-        rows.append({
-            "sample_id": sid,
-            "test_id": str(info.get("test_id", "")),
-            "prompt": str(info.get("prompt", "")),
-            "seed": info.get("seed", ""),
-            "avg_delta": avg,
-            "metric_deltas": per_metric.get(sid, {}),
-        })
+        rows.append(
+            {
+                "sample_id": sid,
+                "test_id": str(info.get("test_id", "")),
+                "prompt": str(info.get("prompt", "")),
+                "seed": info.get("seed", ""),
+                "avg_delta": avg,
+                "metric_deltas": per_metric.get(sid, {}),
+            }
+        )
 
     rows.sort(key=lambda x: x["avg_delta"])
     return {
@@ -344,10 +354,18 @@ def _render_gate_changes(gate_changes: list[dict[str, Any]]) -> str:
     for g in gate_changes:
         b_act = g.get("baseline_actual")
         c_act = g.get("candidate_actual")
-        b_str = f"{b_act:.6f}" if isinstance(b_act, float) else str(b_act) if b_act is not None else "—"
-        c_str = f"{c_act:.6f}" if isinstance(c_act, float) else str(c_act) if c_act is not None else "—"
+        b_str = (
+            f"{b_act:.6f}" if isinstance(b_act, float) else str(b_act) if b_act is not None else "—"
+        )
+        c_str = (
+            f"{c_act:.6f}" if isinstance(c_act, float) else str(c_act) if c_act is not None else "—"
+        )
         method = g.get("method", "threshold")
-        sprt_badge = ' <span style="font-size:0.72rem;background:#fef9c3;color:#92400e;padding:1px 5px;border-radius:3px">SPRT</span>' if method == "sprt_regression" else ""
+        sprt_badge = (
+            ' <span style="font-size:0.72rem;background:#fef9c3;color:#92400e;padding:1px 5px;border-radius:3px">SPRT</span>'
+            if method == "sprt_regression"
+            else ""
+        )
         rows.append(
             f"<tr>"
             f"<td><code>{escape(str(g.get('metric', '')))}</code>{sprt_badge}</td>"
@@ -363,7 +381,7 @@ def _render_gate_changes(gate_changes: list[dict[str, Any]]) -> str:
         "<th>Metric</th><th>Op</th><th>Target</th>"
         "<th>Baseline</th><th>Candidate</th><th>Change</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
@@ -383,10 +401,7 @@ def _render_sprt_comparison(gate_changes: list[dict[str, Any]]) -> str:
             cv = sc.get(key)
             bvs = f"{bv:.6f}" if isinstance(bv, float) else str(bv) if bv is not None else "—"
             cvs = f"{cv:.6f}" if isinstance(cv, float) else str(cv) if cv is not None else "—"
-            return (
-                f"<tr><td><strong>{escape(label)}</strong></td>"
-                f"<td>{bvs}</td><td>{cvs}</td></tr>"
-            )
+            return f"<tr><td><strong>{escape(label)}</strong></td><td>{bvs}</td><td>{cvs}</td></tr>"
 
         pairs_b = (sb.get("pairing") or {}).get("paired_count") or sb.get("paired_count")
         pairs_c = (sc.get("pairing") or {}).get("paired_count") or sc.get("paired_count")
@@ -431,7 +446,7 @@ def _render_metric_deltas(deltas: list[dict[str, Any]]) -> str:
         "<table><thead><tr>"
         "<th>Metric</th><th>Baseline</th><th>Candidate</th><th>Δ</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
@@ -443,9 +458,7 @@ def _render_sample_table(samples: list[dict[str, Any]], label: str) -> str:
         prompt = str(s.get("prompt", ""))
         prompt_short = (prompt[:75] + "…") if len(prompt) > 75 else prompt
         deltas_html = " ".join(
-            f'<span style="font-size:0.78rem">'
-            f'<code>{escape(mname)}</code> {_delta_cell(v)}'
-            f"</span>"
+            f'<span style="font-size:0.78rem"><code>{escape(mname)}</code> {_delta_cell(v)}</span>'
             for mname, v in (s.get("metric_deltas") or {}).items()
         )
         rows.append(
@@ -462,7 +475,7 @@ def _render_sample_table(samples: list[dict[str, Any]], label: str) -> str:
         "<table><thead><tr>"
         "<th>Test ID</th><th>Seed</th><th>Prompt</th><th>Avg Δ</th><th>Per-metric Δ</th>"
         "</tr></thead>"
-        f'<tbody>{"".join(rows)}</tbody></table>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
@@ -500,9 +513,19 @@ def format_compare_text(cmp: dict[str, Any]) -> str:
             b_act = g.get("baseline_actual")
             c_act = g.get("candidate_actual")
             change = str(g.get("change", "unchanged"))
-            b_str = f"{b_act:.6f}" if isinstance(b_act, float) else (str(b_act) if b_act is not None else "—")
-            c_str = f"{c_act:.6f}" if isinstance(c_act, float) else (str(c_act) if c_act is not None else "—")
-            tag = {"regression": "REGRESSED", "improvement": "IMPROVED", "new": "NEW"}.get(change, "ok")
+            b_str = (
+                f"{b_act:.6f}"
+                if isinstance(b_act, float)
+                else (str(b_act) if b_act is not None else "—")
+            )
+            c_str = (
+                f"{c_act:.6f}"
+                if isinstance(c_act, float)
+                else (str(c_act) if c_act is not None else "—")
+            )
+            tag = {"regression": "REGRESSED", "improvement": "IMPROVED", "new": "NEW"}.get(
+                change, "ok"
+            )
             lines.append(f"  {metric} {op} {target}  {b_str} → {c_str}  [{tag}]")
         lines.append("")
 
@@ -550,57 +573,57 @@ def write_compare_report(
 <body>
   <h1>TemporalCI Run Comparison</h1>
   <p class="subtitle">
-    {escape(str(cmp.get('project', '')))} / {escape(str(cmp.get('suite_name', '')))} /
-    {escape(str(cmp.get('model_name', '')))}
+    {escape(str(cmp.get("project", "")))} / {escape(str(cmp.get("suite_name", "")))} /
+    {escape(str(cmp.get("model_name", "")))}
   </p>
 
   <section>
     <div class="run-pair">
       <div class="run-card">
         <small>BASELINE</small>
-        <div class="rid">{escape(str(cmp['baseline_run_id'] or '—'))}</div>
+        <div class="rid">{escape(str(cmp["baseline_run_id"] or "—"))}</div>
         <div style="margin-top:4px">
-          {_status_badge(cmp['baseline_status'])}
-          <span style="font-size:0.78rem;color:#94a3b8;margin-left:6px">{escape(cmp['baseline_timestamp'])}</span>
+          {_status_badge(cmp["baseline_status"])}
+          <span style="font-size:0.78rem;color:#94a3b8;margin-left:6px">{escape(cmp["baseline_timestamp"])}</span>
         </div>
       </div>
       <div class="arrow">→</div>
       <div class="run-card">
         <small>CANDIDATE</small>
-        <div class="rid">{escape(str(cmp['candidate_run_id'] or '—'))}</div>
+        <div class="rid">{escape(str(cmp["candidate_run_id"] or "—"))}</div>
         <div style="margin-top:4px">
-          {_status_badge(cmp['candidate_status'])}
-          <span style="font-size:0.78rem;color:#94a3b8;margin-left:6px">{escape(cmp['candidate_timestamp'])}</span>
+          {_status_badge(cmp["candidate_status"])}
+          <span style="font-size:0.78rem;color:#94a3b8;margin-left:6px">{escape(cmp["candidate_timestamp"])}</span>
         </div>
       </div>
     </div>
 
     <div class="summary-pills">
-      <span class="pill pill-reg">{len(gate_regressions)} gate regression{'s' if len(gate_regressions) != 1 else ''}</span>
-      <span class="pill pill-imp">{len(gate_improvements)} gate improvement{'s' if len(gate_improvements) != 1 else ''}</span>
+      <span class="pill pill-reg">{len(gate_regressions)} gate regression{"s" if len(gate_regressions) != 1 else ""}</span>
+      <span class="pill pill-imp">{len(gate_improvements)} gate improvement{"s" if len(gate_improvements) != 1 else ""}</span>
       <span class="pill pill-same">{n_unchanged} unchanged</span>
-      <span class="pill pill-same">{cmp['sample_analysis'].get('total_matched', 0)} samples matched</span>
+      <span class="pill pill-same">{cmp["sample_analysis"].get("total_matched", 0)} samples matched</span>
     </div>
   </section>
 
   <section>
     <h2>Gate Changes</h2>
-    {_render_gate_changes(cmp['gate_changes'])}
+    {_render_gate_changes(cmp["gate_changes"])}
   </section>
 
   <section>
     <h2>Metric Deltas</h2>
-    {_render_metric_deltas(cmp['metric_deltas'])}
+    {_render_metric_deltas(cmp["metric_deltas"])}
   </section>
 
   <section>
     <h2>SPRT Comparison</h2>
-    {_render_sprt_comparison(cmp['gate_changes'])}
+    {_render_sprt_comparison(cmp["gate_changes"])}
   </section>
 
   <section>
     <h2>Per-sample Analysis</h2>
-    {_render_sample_analysis(cmp['sample_analysis'])}
+    {_render_sample_analysis(cmp["sample_analysis"])}
   </section>
 </body>
 </html>

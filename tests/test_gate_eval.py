@@ -7,6 +7,7 @@ Covered here:
   _run_sprt (inconclusive=pass, accept_h1, crossed_at, llr_history),
   _load_recent_runs, _apply_windowed_gates.
 """
+
 from __future__ import annotations
 
 import json
@@ -482,8 +483,18 @@ def test_run_sprt_has_required_keys() -> None:
     params = _default_params()
     deltas = [0.1, -0.05, 0.0, 0.1, 0.05, 0.0, 0.05, 0.1]
     result = _run_sprt(deltas=deltas, params=params)
-    for key in ("decision", "decision_passed", "paired_count", "alpha", "beta",
-                "effect_size", "sigma", "llr", "upper_threshold", "lower_threshold"):
+    for key in (
+        "decision",
+        "decision_passed",
+        "paired_count",
+        "alpha",
+        "beta",
+        "effect_size",
+        "sigma",
+        "llr",
+        "upper_threshold",
+        "lower_threshold",
+    ):
         assert key in result, f"missing key: {key}"
 
 
@@ -559,8 +570,9 @@ def test_load_recent_runs_ignores_non_dict_json(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_gate_spec(metric: str = "score", op: str = ">=", window: int = 3,
-                    min_failures: int = 2) -> MagicMock:
+def _make_gate_spec(
+    metric: str = "score", op: str = ">=", window: int = 3, min_failures: int = 2
+) -> MagicMock:
     spec = MagicMock()
     spec.metric = metric
     spec.op = op
@@ -601,9 +613,7 @@ def test_apply_windowed_gates_failures_at_min_stays_failed() -> None:
     spec = _make_gate_spec(window=3, min_failures=2)
     result = {"metric": "score", "op": ">=", "passed": False, "threshold_passed": False}
     # 1 historical failure + current = 2 = min_failures → not overridden
-    recent_runs = [
-        {"gates": [{"metric": "score", "op": ">=", "threshold_passed": False}]}
-    ]
+    recent_runs = [{"gates": [{"metric": "score", "op": ">=", "threshold_passed": False}]}]
     out = _apply_windowed_gates([spec], [result], recent_runs=recent_runs)
     assert out[0]["passed"] is False
     assert "windowed_pass" not in out[0]
@@ -627,9 +637,7 @@ def test_apply_windowed_gates_ignores_different_metric_in_history() -> None:
     spec = _make_gate_spec(metric="score", op=">=", window=3, min_failures=2)
     result = {"metric": "score", "op": ">=", "passed": False, "threshold_passed": False}
     # Historical run has a different metric — should not count
-    recent_runs = [
-        {"gates": [{"metric": "other_metric", "op": ">=", "threshold_passed": False}]}
-    ]
+    recent_runs = [{"gates": [{"metric": "other_metric", "op": ">=", "threshold_passed": False}]}]
     out = _apply_windowed_gates([spec], [result], recent_runs=recent_runs)
     # hist=0 + current=1 = 1 < 2 → windowed pass
     assert out[0]["passed"] is True

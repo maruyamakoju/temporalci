@@ -93,13 +93,16 @@ class CoordinatorWorker:
                 suite_file = Path(task["suite_path"])
 
             suite = load_suite(suite_file)
-            result = cast("dict[str, Any]", run_suite(
-                suite=suite,
-                model_name=task.get("model_name"),
-                artifacts_dir=task.get("artifacts_dir", self.settings.default_artifacts_dir),
-                fail_on_regression=as_bool(task.get("fail_on_regression", True), default=True),
-                baseline_mode=str(task.get("baseline_mode", "latest_pass")),
-            ))
+            result = cast(
+                "dict[str, Any]",
+                run_suite(
+                    suite=suite,
+                    model_name=task.get("model_name"),
+                    artifacts_dir=task.get("artifacts_dir", self.settings.default_artifacts_dir),
+                    fail_on_regression=as_bool(task.get("fail_on_regression", True), default=True),
+                    baseline_mode=str(task.get("baseline_mode", "latest_pass")),
+                ),
+            )
             result["coordinator_run_id"] = run_id
 
             if as_bool(task.get("upload_artifacts", False), default=False):

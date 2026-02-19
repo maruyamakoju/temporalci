@@ -7,6 +7,7 @@ Public API
 ----------
 export_runs(model_root, output, *, last_n, fmt)  ->  int   (rows written)
 """
+
 from __future__ import annotations
 
 import csv
@@ -59,11 +60,7 @@ def _scalar_metric_paths(metrics: dict[str, Any]) -> list[str]:
             return
         for k, v in obj.items():
             path = f"{prefix}.{k}" if prefix else k
-            if (
-                isinstance(v, (int, float))
-                and not isinstance(v, bool)
-                and math.isfinite(float(v))
-            ):
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
                 paths.append(path)
             elif isinstance(v, dict):
                 _walk(v, path)
@@ -98,10 +95,15 @@ def _export_csv(runs: list[dict[str, Any]], output: Path) -> int:
 
     # Include model_name if any run carries it (e.g. suite-level export)
     has_model_name = any("model_name" in r for r in runs)
-    base_fields = (
-        ["model_name"] if has_model_name else []
-    ) + ["run_id", "timestamp_utc", "status", "sample_count",
-         "gate_failed", "regression_failed", "baseline_run_id"]
+    base_fields = (["model_name"] if has_model_name else []) + [
+        "run_id",
+        "timestamp_utc",
+        "status",
+        "sample_count",
+        "gate_failed",
+        "regression_failed",
+        "baseline_run_id",
+    ]
     fieldnames = base_fields + all_metric_paths
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -125,9 +127,7 @@ def _export_csv(runs: list[dict[str, Any]], output: Path) -> int:
                 try:
                     val = _resolve_dotted(metrics, path)
                     row[path] = (
-                        val
-                        if isinstance(val, (int, float)) and not isinstance(val, bool)
-                        else ""
+                        val if isinstance(val, (int, float)) and not isinstance(val, bool) else ""
                     )
                 except (KeyError, TypeError):
                     row[path] = ""

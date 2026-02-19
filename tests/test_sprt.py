@@ -35,7 +35,9 @@ def test_estimate_required_pairs_matches_formula() -> None:
 
 def test_drift_and_required_pairs_validate_inputs() -> None:
     assert drift_per_pair(effect_size=0.02, sigma=0.0) is None
-    assert required_pairs_from_thresholds(upper_threshold=1.0, lower_threshold=-1.0, drift=0.0) is None
+    assert (
+        required_pairs_from_thresholds(upper_threshold=1.0, lower_threshold=-1.0, drift=0.0) is None
+    )
     assert estimate_required_pairs(alpha=0.8, beta=0.1, effect_size=0.02, sigma=0.05) is None
 
 

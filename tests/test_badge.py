@@ -76,7 +76,7 @@ def test_badge_case_insensitive_pass(tmp_path: Path) -> None:
     p = tmp_path / "badge.svg"
     write_badge_svg(p, "pass")
     content = p.read_text(encoding="utf-8")
-    assert "#2da44e" in content   # green
+    assert "#2da44e" in content  # green
     assert "PASS" in content
 
 
