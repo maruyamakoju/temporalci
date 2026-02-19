@@ -40,5 +40,8 @@ jobs:
       - name: ruff check
         run: python -m ruff check temporalci/ tests/
 
+      - name: ruff format
+        run: python -m ruff format --check temporalci/ tests/
+
       - name: mypy
         run: python -m mypy temporalci/
