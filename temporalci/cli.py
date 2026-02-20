@@ -971,6 +971,56 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Print aggregated km data as JSON instead of generating HTML",
     )
 
+    serve_cmd = sub.add_parser(
+        "serve",
+        help="Launch live web dashboard for real-time video inspection",
+    )
+    serve_cmd.add_argument(
+        "--video",
+        required=True,
+        metavar="PATH",
+        help="Path to input video file",
+    )
+    serve_cmd.add_argument(
+        "--port",
+        type=int,
+        default=8421,
+        metavar="PORT",
+        help="HTTP port (default: 8421)",
+    )
+    serve_cmd.add_argument(
+        "--host",
+        default="0.0.0.0",
+        metavar="HOST",
+        help="Bind address (default: 0.0.0.0)",
+    )
+    serve_cmd.add_argument(
+        "--fps",
+        type=float,
+        default=1.0,
+        help="Extraction FPS (default: 1.0)",
+    )
+    serve_cmd.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        dest="max_frames",
+        help="Max frames to process (0=all)",
+    )
+    serve_cmd.add_argument("--device", default="auto", help="Torch device")
+    serve_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        dest="skip_depth",
+        help="Skip depth estimation (faster)",
+    )
+    serve_cmd.add_argument(
+        "--output-dir",
+        default="serve_output",
+        dest="output_dir",
+        help="Output directory for frames/panels (default: serve_output)",
+    )
+
     return parser
 
 
@@ -1435,6 +1485,35 @@ def main(argv: list[str] | None = None) -> int:
             write_trend_report(out, runs, title=args.title)
             print(f"trend report: {out} ({len(runs)} runs)")
             return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "serve":
+        try:
+            from temporalci.server import create_app, run_server
+
+            video = Path(args.video)
+            if not video.is_file():
+                print(f"video not found: {video}")
+                return 1
+
+            app = create_app(
+                video_path=str(video),
+                fps=args.fps,
+                max_frames=args.max_frames,
+                device=args.device,
+                skip_depth=args.skip_depth,
+                output_dir=args.output_dir,
+            )
+            print(f"Starting live dashboard at http://{args.host}:{args.port}")
+            print(f"Video: {video}")
+            print("Press Ctrl+C to stop")
+            run_server(app, host=args.host, port=args.port)
+            return 0
+        except ImportError as exc:
+            print(f"missing dependency: {exc}")
+            return 1
         except Exception as exc:  # noqa: BLE001
             print(f"runtime error: {exc}")
             return 1
