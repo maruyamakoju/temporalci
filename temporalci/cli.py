@@ -794,6 +794,114 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Print results as JSON",
     )
 
+    # ── inspect (video → frames → analysis) ─────────────────────────
+    inspect_cmd = sub.add_parser(
+        "inspect",
+        help="Process a video file: extract frames and run 3-layer vision pipeline",
+    )
+    inspect_cmd.add_argument(
+        "video",
+        help="Path to input video file",
+    )
+    inspect_cmd.add_argument(
+        "--output-dir",
+        default="inspection_output",
+        help="Output directory for frames and results (default: inspection_output)",
+    )
+    inspect_cmd.add_argument(
+        "--fps",
+        type=float,
+        default=1.0,
+        help="Frame extraction rate in frames per second (default: 1.0)",
+    )
+    inspect_cmd.add_argument(
+        "--max-frames",
+        type=int,
+        default=None,
+        help="Maximum number of frames to extract (default: all)",
+    )
+    inspect_cmd.add_argument(
+        "--device",
+        default="auto",
+        help="Inference device: auto, cpu, or cuda (default: auto)",
+    )
+    inspect_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        help="Skip depth estimation (faster, 2-layer mode)",
+    )
+    inspect_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
+    route_map_cmd = sub.add_parser(
+        "route-map",
+        help="Generate an interactive Leaflet.js route map from inspection run results",
+    )
+    route_map_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    route_map_cmd.add_argument(
+        "--output",
+        default="route_map.html",
+        metavar="PATH",
+        help="Output HTML path (default: route_map.html)",
+    )
+    route_map_cmd.add_argument(
+        "--title",
+        default="Catenary Inspection Route Map",
+        metavar="TITLE",
+        help="Map title (default: Catenary Inspection Route Map)",
+    )
+
+    # ── temporal-diff ──────────────────────────────────────────────────
+    tdiff_cmd = sub.add_parser(
+        "temporal-diff",
+        help="Compare two inspection runs to detect vegetation change over time",
+    )
+    tdiff_cmd.add_argument(
+        "--before",
+        required=True,
+        metavar="DIR",
+        help="Run directory for the earlier (before) inspection",
+    )
+    tdiff_cmd.add_argument(
+        "--after",
+        required=True,
+        metavar="DIR",
+        help="Run directory for the later (after) inspection",
+    )
+    tdiff_cmd.add_argument(
+        "--output",
+        default="temporal_diff.html",
+        metavar="PATH",
+        help="Output HTML path (default: temporal_diff.html)",
+    )
+    tdiff_cmd.add_argument(
+        "--before-label",
+        default="Before",
+        metavar="LABEL",
+        help="Label for the before run (e.g. '2025-06 Summer')",
+    )
+    tdiff_cmd.add_argument(
+        "--after-label",
+        default="After",
+        metavar="LABEL",
+        help="Label for the after run (e.g. '2025-12 Winter')",
+    )
+    tdiff_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
     return parser
 
 
@@ -987,6 +1095,50 @@ def main(argv: list[str] | None = None) -> int:
             print(f"runtime error: {exc}")
             return 1
 
+    if args.command == "inspect":
+        try:
+            from temporalci.vision.video import process_video
+
+            video_path = Path(args.video)
+            if not video_path.is_file():
+                print(f"error: video file not found: {video_path}")
+                return 1
+
+            result = process_video(
+                video_path,
+                output_dir=args.output_dir,
+                fps=args.fps,
+                max_frames=args.max_frames,
+                device=args.device,
+                skip_depth=args.skip_depth,
+            )
+
+            if args.print_json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                meta = result.get("_meta", {})
+                print(f"\n{'=' * 60}")
+                print(f"  Video: {meta.get('video_path', args.video)}")
+                print(f"  Frames extracted: {meta.get('frames_extracted', '?')}")
+                print(f"  Score: {result.get('score', 0.0):.4f}")
+                print(f"  Samples: {result.get('sample_count', 0)}")
+                for dim, val in result.get("dims", {}).items():
+                    print(f"  {dim}: {val:.6f}")
+                alerts = result.get("alert_frames", [])
+                print(f"  Alert frames: {len(alerts)}")
+                for a in alerts:
+                    print(
+                        f"    {a['prompt']:20s}  risk={a['risk_level']}  "
+                        f"score={a['risk_score']:.2f}  clearance={a['clearance_px']:.0f}px"
+                    )
+                print(f"{'=' * 60}")
+                print(f"Output directory: {args.output_dir}/")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
     if args.command == "clearance":
         try:
             from temporalci.metrics.catenary_clearance import evaluate
@@ -1043,6 +1195,80 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 print(f"{'=' * 60}")
                 print(f"Multi-panel visualizations: {args.output_dir}/")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "route-map":
+        try:
+            from temporalci.route_map import generate_route_map
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+            per_sample = run_data.get("per_sample", [])
+            if not per_sample:
+                print(f"no per_sample data in {run_json}")
+                return 1
+            output = Path(args.output)
+            generate_route_map(per_sample, output, title=args.title)
+            geo_count = sum(
+                1 for s in per_sample if s.get("lat") is not None and s.get("lon") is not None
+            )
+            print(f"route map: {output} ({geo_count}/{len(per_sample)} geo-located)")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "temporal-diff":
+        try:
+            from temporalci.temporal_diff import temporal_diff, write_temporal_diff_report
+
+            before_dir = Path(args.before)
+            after_dir = Path(args.after)
+
+            for label, d in [("before", before_dir), ("after", after_dir)]:
+                rj = d / "run.json"
+                if not rj.exists():
+                    print(f"run.json not found in {label} dir: {d}")
+                    return 1
+
+            before_data = json.loads((before_dir / "run.json").read_text(encoding="utf-8"))
+            after_data = json.loads((after_dir / "run.json").read_text(encoding="utf-8"))
+
+            # Extract metric results (may be nested under metrics key)
+            before_result = before_data.get("metrics", {}).get("catenary_clearance", before_data)
+            after_result = after_data.get("metrics", {}).get("catenary_clearance", after_data)
+
+            if args.print_json:
+                diff = temporal_diff(before_result, after_result)
+                print(json.dumps(diff, indent=2, default=str))
+            else:
+                output = Path(args.output)
+                diff = write_temporal_diff_report(
+                    output,
+                    before_result,
+                    after_result,
+                    before_label=args.before_label,
+                    after_label=args.after_label,
+                )
+                summary = diff["summary"]
+                print(f"\n{'=' * 60}")
+                print(f"  Temporal Diff: {args.before_label} vs {args.after_label}")
+                print(f"  Matched frames: {summary['matched_count']}")
+                print(f"  Avg risk delta: {summary.get('avg_risk_delta', 0):+.4f}")
+                print(f"  Degraded: {summary.get('degraded_count', 0)}")
+                print(f"  Improved: {summary.get('improved_count', 0)}")
+                print(f"  Stable: {summary.get('stable_count', 0)}")
+                print(f"  Hotspots: {len(diff['hotspots'])}")
+                print(f"{'=' * 60}")
+                print(f"Report: {output}")
 
             return 0
         except Exception as exc:  # noqa: BLE001
