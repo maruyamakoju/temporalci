@@ -902,6 +902,75 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Print results as JSON",
     )
 
+    # ── dashboard ──────────────────────────────────────────────────────
+    dash_cmd = sub.add_parser(
+        "dashboard",
+        help="Generate an interactive HTML dashboard from inspection results",
+    )
+    dash_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    dash_cmd.add_argument(
+        "--output",
+        default="dashboard.html",
+        metavar="PATH",
+        help="Output HTML path (default: dashboard.html)",
+    )
+    dash_cmd.add_argument(
+        "--title",
+        default="Catenary Inspection Dashboard",
+        metavar="TITLE",
+        help="Dashboard title",
+    )
+
+    # ── km-report ──────────────────────────────────────────────────
+    km_report_cmd = sub.add_parser(
+        "km-report",
+        help="Generate km-based risk report from multi-camera fusion results",
+    )
+    km_report_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    km_report_cmd.add_argument(
+        "--output",
+        default="km_report.html",
+        metavar="PATH",
+        help="Output HTML path (default: km_report.html)",
+    )
+    km_report_cmd.add_argument(
+        "--bin-size",
+        type=float,
+        default=0.5,
+        metavar="KM",
+        dest="bin_size",
+        help="Km bin size for aggregation (default: 0.5)",
+    )
+    km_report_cmd.add_argument(
+        "--title",
+        default="Km-based Inspection Report",
+        metavar="TITLE",
+        help="Report title",
+    )
+    km_report_cmd.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        metavar="KM",
+        help="Maintenance budget in km (prints priority list when set)",
+    )
+    km_report_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print aggregated km data as JSON instead of generating HTML",
+    )
+
     return parser
 
 
@@ -1269,6 +1338,86 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  Hotspots: {len(diff['hotspots'])}")
                 print(f"{'=' * 60}")
                 print(f"Report: {output}")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "dashboard":
+        try:
+            from temporalci.dashboard import generate_dashboard
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+
+            # Try to extract catenary_clearance results or use top-level
+            metrics = run_data.get("metrics", {})
+            results = metrics.get("catenary_clearance", run_data)
+
+            output = Path(args.output)
+            generate_dashboard(results, output, title=args.title)
+            print(f"dashboard: {output}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "km-report":
+        try:
+            from temporalci.fusion import (
+                aggregate_by_km,
+                generate_km_report,
+                prioritize_maintenance,
+            )
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+
+            # Extract per_sample data (may be nested under metrics)
+            metrics = run_data.get("metrics", {})
+            result = metrics.get("catenary_clearance", run_data)
+            per_sample = result.get("per_sample", [])
+            if not per_sample:
+                print(f"no per_sample data in {run_json}")
+                return 1
+
+            km_bins = aggregate_by_km(per_sample, bin_size_km=args.bin_size)
+            if not km_bins:
+                print("no frames with km data found")
+                return 1
+
+            if args.print_json:
+                km_payload: dict[str, Any] = {"km_bins": km_bins}
+                if args.budget is not None:
+                    km_payload["priority"] = prioritize_maintenance(km_bins, budget_km=args.budget)
+                print(json.dumps(km_payload, indent=2))
+            else:
+                output = Path(args.output)
+                generate_km_report(km_bins, output, title=args.title)
+                print(
+                    f"km report: {output} ({len(km_bins)} bins, "
+                    f"{sum(b['frame_count'] for b in km_bins)} frames)"
+                )
+
+                if args.budget is not None:
+                    priority = prioritize_maintenance(km_bins, budget_km=args.budget)
+                    print(f"\npriority maintenance ({args.budget:.1f} km budget):")
+                    for seg in priority:
+                        print(
+                            f"  km {seg['km_start']:.1f}-{seg['km_end']:.1f}  "
+                            f"risk={seg['avg_risk']:.4f}  urgency={seg['urgency']}"
+                        )
+                    if not priority:
+                        print("  (no segments fit within budget)")
 
             return 0
         except Exception as exc:  # noqa: BLE001
