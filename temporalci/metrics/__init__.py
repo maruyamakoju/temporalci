@@ -18,6 +18,7 @@ _REGISTRY: dict[str, MetricTarget] = {
     "t2vsafetybench_official": "temporalci.metrics.t2vsafetybench_official:evaluate",
     "catenary_vegetation": "temporalci.metrics.catenary_vegetation:evaluate",
     "catenary_vegetation_ml": "temporalci.metrics.catenary_vegetation_ml:evaluate",
+    "catenary_clearance": "temporalci.metrics.catenary_clearance:evaluate",
 }
 
 

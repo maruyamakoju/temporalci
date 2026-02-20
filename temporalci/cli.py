@@ -758,6 +758,42 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Glob pattern for frame files (default: *.jpg)",
     )
 
+    # ── clearance ──────────────────────────────────────────────────────
+    clr_cmd = sub.add_parser(
+        "clearance",
+        help="Run 3-layer vision pipeline (segmentation + depth + wire detection)",
+    )
+    clr_cmd.add_argument(
+        "frame_dir",
+        help="Directory containing inspection frames",
+    )
+    clr_cmd.add_argument(
+        "--output-dir",
+        default="clearance_output",
+        help="Output directory for multi-panel visualizations (default: clearance_output)",
+    )
+    clr_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+    clr_cmd.add_argument(
+        "--device",
+        default="auto",
+        help="Inference device: auto, cpu, or cuda (default: auto)",
+    )
+    clr_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        help="Skip depth estimation (faster, 2-layer mode)",
+    )
+    clr_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
     return parser
 
 
@@ -946,6 +982,68 @@ def main(argv: list[str] | None = None) -> int:
                 cov = r["green_ratio_half"]
                 print(f"  {r['source_frame']:20s}  prox={prox:.4f}  cov={cov:.4f}")
             print(f"\n{len(results)} heatmaps written to {args.output_dir}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "clearance":
+        try:
+            from temporalci.metrics.catenary_clearance import evaluate
+            from temporalci.types import GeneratedSample
+
+            frame_dir = Path(args.frame_dir)
+            if not frame_dir.is_dir():
+                print(f"error: not a directory: {frame_dir}")
+                return 1
+
+            frames = sorted(frame_dir.glob(args.pattern))
+            if not frames:
+                print(f"no frames matching '{args.pattern}' in {frame_dir}")
+                return 1
+
+            samples = [
+                GeneratedSample(
+                    test_id="clearance",
+                    prompt=f.stem,
+                    seed=0,
+                    video_path=str(f),
+                    evaluation_stream=[],
+                )
+                for f in frames
+            ]
+
+            print(f"Running 3-layer vision pipeline on {len(samples)} frames...")
+            print(f"  Device: {args.device}")
+            print(f"  Depth: {'skip' if args.skip_depth else 'enabled'}")
+
+            result = evaluate(
+                samples,
+                params={
+                    "device": args.device,
+                    "skip_depth": str(args.skip_depth).lower(),
+                    "output_dir": args.output_dir,
+                },
+            )
+
+            if args.print_json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                print(f"\n{'=' * 60}")
+                print(f"  Score: {result['score']:.4f}")
+                print(f"  Samples: {result['sample_count']}")
+                for dim, val in result["dims"].items():
+                    print(f"  {dim}: {val:.6f}")
+                alerts = result.get("alert_frames", [])
+                print(f"  Alert frames: {len(alerts)}")
+                for a in alerts:
+                    print(
+                        f"    {a['prompt']:20s}  risk={a['risk_level']}  "
+                        f"score={a['risk_score']:.2f}  clearance={a['clearance_px']:.0f}px"
+                    )
+                print(f"{'=' * 60}")
+                print(f"Multi-panel visualizations: {args.output_dir}/")
+
             return 0
         except Exception as exc:  # noqa: BLE001
             print(f"runtime error: {exc}")
