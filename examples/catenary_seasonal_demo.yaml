@@ -1,0 +1,32 @@
+version: 1
+project: "jr-east-catenary"
+suite_name: "seasonal-comparison"
+
+models:
+  - name: "side-camera-left"
+    adapter: "frame_archive"
+    params:
+      archive_dir: "./frames/summer_sim"
+      camera: "left"
+
+tests:
+  - id: "vegetation-check"
+    type: "inspection"
+    prompt_source:
+      kind: "directory"
+      path: "./frames/summer_sim"
+      pattern: "*.jpg"
+    seeds: [0]
+
+metrics:
+  - name: "catenary_vegetation"
+    params:
+      proximity_threshold: 0.05
+
+gates:
+  - metric: "catenary_vegetation.score"
+    op: ">="
+    value: 0.7
+  - metric: "catenary_vegetation.dims.vegetation_proximity"
+    op: "<="
+    value: 0.15

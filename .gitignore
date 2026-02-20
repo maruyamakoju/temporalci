@@ -9,3 +9,7 @@ temporalci.egg-info/
 .ruff_cache/
 .claude/
 *.bundle
+# Data files (video, extracted frames)
+*.mp4
+frames/
+jr_frames/

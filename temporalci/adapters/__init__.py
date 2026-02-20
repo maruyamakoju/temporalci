@@ -12,6 +12,7 @@ _REGISTRY: dict[str, AdapterTarget] = {
     "mock": "temporalci.adapters.mock:MockAdapter",
     "http": "temporalci.adapters.http:HttpAdapter",
     "diffusers_img2vid": "temporalci.adapters.diffusers_img2vid:DiffusersImg2VidAdapter",
+    "frame_archive": "temporalci.adapters.frame_archive:FrameArchiveAdapter",
 }
 
 

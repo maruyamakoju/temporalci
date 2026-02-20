@@ -215,7 +215,7 @@ def _parse_tests(root: dict[str, Any], suite_dir: Path) -> list[TestSpec]:
     raw_tests = _require_non_empty_list(root.get("tests"), "tests")
     tests: list[TestSpec] = []
     seen: set[str] = set()
-    supported_types = {"generation"}
+    supported_types = {"generation", "inspection"}
 
     for i, raw_test in enumerate(raw_tests):
         test = _require_dict(raw_test, f"tests[{i}]")

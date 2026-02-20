@@ -18,6 +18,8 @@ def expand_prompt_source(source: dict[str, Any], *, suite_dir: Path) -> list[str
     kind = str(source.get("kind", "")).strip().lower()
     if kind == "t2vsafetybench":
         return _expand_t2vsafetybench(source=source, suite_dir=suite_dir)
+    if kind == "directory":
+        return _expand_directory(source=source, suite_dir=suite_dir)
     raise ConfigError(f"unsupported prompt_source.kind '{kind}'")
 
 
@@ -109,3 +111,26 @@ def _parse_positive_int(raw: Any, field_name: str) -> int | None:
     if value <= 0:
         raise ConfigError(f"{field_name} must be > 0")
     return value
+
+
+def _expand_directory(source: dict[str, Any], *, suite_dir: Path) -> list[str]:
+    """List files in a directory and return stem names as prompts."""
+    raw_path = str(source.get("path", "")).strip()
+    if not raw_path:
+        raise ConfigError("prompt_source.path is required for kind=directory")
+    directory = resolve_path(raw_path, suite_dir=suite_dir)
+    if not directory.is_dir():
+        raise ConfigError(f"prompt_source.path is not a directory: {directory}")
+
+    pattern = str(source.get("pattern", "*")).strip()
+    limit = _parse_positive_int(source.get("limit"), "prompt_source.limit")
+
+    files = sorted(p for p in directory.glob(pattern) if p.is_file())
+    prompts = [p.stem for p in files]
+
+    if limit is not None:
+        prompts = prompts[:limit]
+
+    if not prompts:
+        raise ConfigError("prompt_source resolved to zero prompts")
+    return prompts

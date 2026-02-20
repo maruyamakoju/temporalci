@@ -702,6 +702,325 @@ def _build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentPars
         help="Output format: text (default) or json",
     )
 
+    heatmap_cmd = sub.add_parser(
+        "heatmap",
+        help="Generate vegetation detection heatmap overlays for inspection frames",
+    )
+    heatmap_cmd.add_argument(
+        "--frame-dir",
+        required=True,
+        metavar="DIR",
+        help="Directory containing source frames",
+    )
+    heatmap_cmd.add_argument(
+        "--output-dir",
+        required=True,
+        metavar="DIR",
+        help="Output directory for heatmap PNGs",
+    )
+    heatmap_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+    heatmap_cmd.add_argument(
+        "--alpha",
+        type=float,
+        default=0.45,
+        help="Overlay opacity 0-1 (default: 0.45)",
+    )
+
+    insp_cmd = sub.add_parser(
+        "inspection-report",
+        help="Generate an HTML inspection report with embedded heatmap thumbnails",
+    )
+    insp_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    insp_cmd.add_argument(
+        "--frame-dir",
+        required=True,
+        metavar="DIR",
+        help="Directory containing source frames",
+    )
+    insp_cmd.add_argument(
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Output HTML path (default: <run-dir>/inspection_report.html)",
+    )
+    insp_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+
+    # ── clearance ──────────────────────────────────────────────────────
+    clr_cmd = sub.add_parser(
+        "clearance",
+        help="Run 3-layer vision pipeline (segmentation + depth + wire detection)",
+    )
+    clr_cmd.add_argument(
+        "frame_dir",
+        help="Directory containing inspection frames",
+    )
+    clr_cmd.add_argument(
+        "--output-dir",
+        default="clearance_output",
+        help="Output directory for multi-panel visualizations (default: clearance_output)",
+    )
+    clr_cmd.add_argument(
+        "--pattern",
+        default="*.jpg",
+        help="Glob pattern for frame files (default: *.jpg)",
+    )
+    clr_cmd.add_argument(
+        "--device",
+        default="auto",
+        help="Inference device: auto, cpu, or cuda (default: auto)",
+    )
+    clr_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        help="Skip depth estimation (faster, 2-layer mode)",
+    )
+    clr_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
+    # ── inspect (video → frames → analysis) ─────────────────────────
+    inspect_cmd = sub.add_parser(
+        "inspect",
+        help="Process a video file: extract frames and run 3-layer vision pipeline",
+    )
+    inspect_cmd.add_argument(
+        "video",
+        help="Path to input video file",
+    )
+    inspect_cmd.add_argument(
+        "--output-dir",
+        default="inspection_output",
+        help="Output directory for frames and results (default: inspection_output)",
+    )
+    inspect_cmd.add_argument(
+        "--fps",
+        type=float,
+        default=1.0,
+        help="Frame extraction rate in frames per second (default: 1.0)",
+    )
+    inspect_cmd.add_argument(
+        "--max-frames",
+        type=int,
+        default=None,
+        help="Maximum number of frames to extract (default: all)",
+    )
+    inspect_cmd.add_argument(
+        "--device",
+        default="auto",
+        help="Inference device: auto, cpu, or cuda (default: auto)",
+    )
+    inspect_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        help="Skip depth estimation (faster, 2-layer mode)",
+    )
+    inspect_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
+    route_map_cmd = sub.add_parser(
+        "route-map",
+        help="Generate an interactive Leaflet.js route map from inspection run results",
+    )
+    route_map_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    route_map_cmd.add_argument(
+        "--output",
+        default="route_map.html",
+        metavar="PATH",
+        help="Output HTML path (default: route_map.html)",
+    )
+    route_map_cmd.add_argument(
+        "--title",
+        default="Catenary Inspection Route Map",
+        metavar="TITLE",
+        help="Map title (default: Catenary Inspection Route Map)",
+    )
+
+    # ── temporal-diff ──────────────────────────────────────────────────
+    tdiff_cmd = sub.add_parser(
+        "temporal-diff",
+        help="Compare two inspection runs to detect vegetation change over time",
+    )
+    tdiff_cmd.add_argument(
+        "--before",
+        required=True,
+        metavar="DIR",
+        help="Run directory for the earlier (before) inspection",
+    )
+    tdiff_cmd.add_argument(
+        "--after",
+        required=True,
+        metavar="DIR",
+        help="Run directory for the later (after) inspection",
+    )
+    tdiff_cmd.add_argument(
+        "--output",
+        default="temporal_diff.html",
+        metavar="PATH",
+        help="Output HTML path (default: temporal_diff.html)",
+    )
+    tdiff_cmd.add_argument(
+        "--before-label",
+        default="Before",
+        metavar="LABEL",
+        help="Label for the before run (e.g. '2025-06 Summer')",
+    )
+    tdiff_cmd.add_argument(
+        "--after-label",
+        default="After",
+        metavar="LABEL",
+        help="Label for the after run (e.g. '2025-12 Winter')",
+    )
+    tdiff_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print results as JSON",
+    )
+
+    # ── dashboard ──────────────────────────────────────────────────────
+    dash_cmd = sub.add_parser(
+        "dashboard",
+        help="Generate an interactive HTML dashboard from inspection results",
+    )
+    dash_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    dash_cmd.add_argument(
+        "--output",
+        default="dashboard.html",
+        metavar="PATH",
+        help="Output HTML path (default: dashboard.html)",
+    )
+    dash_cmd.add_argument(
+        "--title",
+        default="Catenary Inspection Dashboard",
+        metavar="TITLE",
+        help="Dashboard title",
+    )
+
+    # ── km-report ──────────────────────────────────────────────────
+    km_report_cmd = sub.add_parser(
+        "km-report",
+        help="Generate km-based risk report from multi-camera fusion results",
+    )
+    km_report_cmd.add_argument(
+        "--run-dir",
+        required=True,
+        metavar="DIR",
+        help="Run artifact directory containing run.json",
+    )
+    km_report_cmd.add_argument(
+        "--output",
+        default="km_report.html",
+        metavar="PATH",
+        help="Output HTML path (default: km_report.html)",
+    )
+    km_report_cmd.add_argument(
+        "--bin-size",
+        type=float,
+        default=0.5,
+        metavar="KM",
+        dest="bin_size",
+        help="Km bin size for aggregation (default: 0.5)",
+    )
+    km_report_cmd.add_argument(
+        "--title",
+        default="Km-based Inspection Report",
+        metavar="TITLE",
+        help="Report title",
+    )
+    km_report_cmd.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        metavar="KM",
+        help="Maintenance budget in km (prints priority list when set)",
+    )
+    km_report_cmd.add_argument(
+        "--json",
+        action="store_true",
+        dest="print_json",
+        help="Print aggregated km data as JSON instead of generating HTML",
+    )
+
+    serve_cmd = sub.add_parser(
+        "serve",
+        help="Launch live web dashboard for real-time video inspection",
+    )
+    serve_cmd.add_argument(
+        "--video",
+        required=True,
+        metavar="PATH",
+        help="Path to input video file",
+    )
+    serve_cmd.add_argument(
+        "--port",
+        type=int,
+        default=8421,
+        metavar="PORT",
+        help="HTTP port (default: 8421)",
+    )
+    serve_cmd.add_argument(
+        "--host",
+        default="0.0.0.0",
+        metavar="HOST",
+        help="Bind address (default: 0.0.0.0)",
+    )
+    serve_cmd.add_argument(
+        "--fps",
+        type=float,
+        default=1.0,
+        help="Extraction FPS (default: 1.0)",
+    )
+    serve_cmd.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        dest="max_frames",
+        help="Max frames to process (0=all)",
+    )
+    serve_cmd.add_argument("--device", default="auto", help="Torch device")
+    serve_cmd.add_argument(
+        "--skip-depth",
+        action="store_true",
+        dest="skip_depth",
+        help="Skip depth estimation (faster)",
+    )
+    serve_cmd.add_argument(
+        "--output-dir",
+        default="serve_output",
+        dest="output_dir",
+        help="Output directory for frames/panels (default: serve_output)",
+    )
+
     return parser
 
 
@@ -852,6 +1171,309 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "metrics-show":
         return _cmd_metrics_show(args)
 
+    if args.command == "inspection-report":
+        try:
+            from temporalci.inspection_report import write_inspection_report
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+            output = Path(args.output) if args.output else run_dir / "inspection_report.html"
+            write_inspection_report(
+                output,
+                run_data=run_data,
+                frame_dir=args.frame_dir,
+                pattern=args.pattern,
+            )
+            print(f"inspection report: {output}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "heatmap":
+        try:
+            from temporalci.heatmap import generate_heatmaps
+
+            results = generate_heatmaps(
+                args.frame_dir,
+                args.output_dir,
+                pattern=args.pattern,
+                overlay_alpha=args.alpha,
+            )
+            for r in results:
+                prox = r["green_ratio_quarter"]
+                cov = r["green_ratio_half"]
+                print(f"  {r['source_frame']:20s}  prox={prox:.4f}  cov={cov:.4f}")
+            print(f"\n{len(results)} heatmaps written to {args.output_dir}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "inspect":
+        try:
+            from temporalci.vision.video import process_video
+
+            video_path = Path(args.video)
+            if not video_path.is_file():
+                print(f"error: video file not found: {video_path}")
+                return 1
+
+            result = process_video(
+                video_path,
+                output_dir=args.output_dir,
+                fps=args.fps,
+                max_frames=args.max_frames,
+                device=args.device,
+                skip_depth=args.skip_depth,
+            )
+
+            if args.print_json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                meta = result.get("_meta", {})
+                print(f"\n{'=' * 60}")
+                print(f"  Video: {meta.get('video_path', args.video)}")
+                print(f"  Frames extracted: {meta.get('frames_extracted', '?')}")
+                print(f"  Score: {result.get('score', 0.0):.4f}")
+                print(f"  Samples: {result.get('sample_count', 0)}")
+                for dim, val in result.get("dims", {}).items():
+                    print(f"  {dim}: {val:.6f}")
+                alerts = result.get("alert_frames", [])
+                print(f"  Alert frames: {len(alerts)}")
+                for a in alerts:
+                    print(
+                        f"    {a['prompt']:20s}  risk={a['risk_level']}  "
+                        f"score={a['risk_score']:.2f}  clearance={a['clearance_px']:.0f}px"
+                    )
+                print(f"{'=' * 60}")
+                print(f"Output directory: {args.output_dir}/")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "clearance":
+        try:
+            from temporalci.metrics.catenary_clearance import evaluate
+            from temporalci.types import GeneratedSample
+
+            frame_dir = Path(args.frame_dir)
+            if not frame_dir.is_dir():
+                print(f"error: not a directory: {frame_dir}")
+                return 1
+
+            frames = sorted(frame_dir.glob(args.pattern))
+            if not frames:
+                print(f"no frames matching '{args.pattern}' in {frame_dir}")
+                return 1
+
+            samples = [
+                GeneratedSample(
+                    test_id="clearance",
+                    prompt=f.stem,
+                    seed=0,
+                    video_path=str(f),
+                    evaluation_stream=[],
+                )
+                for f in frames
+            ]
+
+            print(f"Running 3-layer vision pipeline on {len(samples)} frames...")
+            print(f"  Device: {args.device}")
+            print(f"  Depth: {'skip' if args.skip_depth else 'enabled'}")
+
+            result = evaluate(
+                samples,
+                params={
+                    "device": args.device,
+                    "skip_depth": str(args.skip_depth).lower(),
+                    "output_dir": args.output_dir,
+                },
+            )
+
+            if args.print_json:
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                print(f"\n{'=' * 60}")
+                print(f"  Score: {result['score']:.4f}")
+                print(f"  Samples: {result['sample_count']}")
+                for dim, val in result["dims"].items():
+                    print(f"  {dim}: {val:.6f}")
+                alerts = result.get("alert_frames", [])
+                print(f"  Alert frames: {len(alerts)}")
+                for a in alerts:
+                    print(
+                        f"    {a['prompt']:20s}  risk={a['risk_level']}  "
+                        f"score={a['risk_score']:.2f}  clearance={a['clearance_px']:.0f}px"
+                    )
+                print(f"{'=' * 60}")
+                print(f"Multi-panel visualizations: {args.output_dir}/")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "route-map":
+        try:
+            from temporalci.route_map import generate_route_map
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+            per_sample = run_data.get("per_sample", [])
+            if not per_sample:
+                print(f"no per_sample data in {run_json}")
+                return 1
+            output = Path(args.output)
+            generate_route_map(per_sample, output, title=args.title)
+            geo_count = sum(
+                1 for s in per_sample if s.get("lat") is not None and s.get("lon") is not None
+            )
+            print(f"route map: {output} ({geo_count}/{len(per_sample)} geo-located)")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "temporal-diff":
+        try:
+            from temporalci.temporal_diff import temporal_diff, write_temporal_diff_report
+
+            before_dir = Path(args.before)
+            after_dir = Path(args.after)
+
+            for label, d in [("before", before_dir), ("after", after_dir)]:
+                rj = d / "run.json"
+                if not rj.exists():
+                    print(f"run.json not found in {label} dir: {d}")
+                    return 1
+
+            before_data = json.loads((before_dir / "run.json").read_text(encoding="utf-8"))
+            after_data = json.loads((after_dir / "run.json").read_text(encoding="utf-8"))
+
+            # Extract metric results (may be nested under metrics key)
+            before_result = before_data.get("metrics", {}).get("catenary_clearance", before_data)
+            after_result = after_data.get("metrics", {}).get("catenary_clearance", after_data)
+
+            if args.print_json:
+                diff = temporal_diff(before_result, after_result)
+                print(json.dumps(diff, indent=2, default=str))
+            else:
+                output = Path(args.output)
+                diff = write_temporal_diff_report(
+                    output,
+                    before_result,
+                    after_result,
+                    before_label=args.before_label,
+                    after_label=args.after_label,
+                )
+                summary = diff["summary"]
+                print(f"\n{'=' * 60}")
+                print(f"  Temporal Diff: {args.before_label} vs {args.after_label}")
+                print(f"  Matched frames: {summary['matched_count']}")
+                print(f"  Avg risk delta: {summary.get('avg_risk_delta', 0):+.4f}")
+                print(f"  Degraded: {summary.get('degraded_count', 0)}")
+                print(f"  Improved: {summary.get('improved_count', 0)}")
+                print(f"  Stable: {summary.get('stable_count', 0)}")
+                print(f"  Hotspots: {len(diff['hotspots'])}")
+                print(f"{'=' * 60}")
+                print(f"Report: {output}")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "dashboard":
+        try:
+            from temporalci.dashboard import generate_dashboard
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+
+            # Try to extract catenary_clearance results or use top-level
+            metrics = run_data.get("metrics", {})
+            results = metrics.get("catenary_clearance", run_data)
+
+            output = Path(args.output)
+            generate_dashboard(results, output, title=args.title)
+            print(f"dashboard: {output}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "km-report":
+        try:
+            from temporalci.fusion import (
+                aggregate_by_km,
+                generate_km_report,
+                prioritize_maintenance,
+            )
+
+            run_dir = Path(args.run_dir)
+            run_json = run_dir / "run.json"
+            if not run_json.exists():
+                print(f"run.json not found in {run_dir}")
+                return 1
+            run_data = json.loads(run_json.read_text(encoding="utf-8"))
+
+            # Extract per_sample data (may be nested under metrics)
+            metrics = run_data.get("metrics", {})
+            result = metrics.get("catenary_clearance", run_data)
+            per_sample = result.get("per_sample", [])
+            if not per_sample:
+                print(f"no per_sample data in {run_json}")
+                return 1
+
+            km_bins = aggregate_by_km(per_sample, bin_size_km=args.bin_size)
+            if not km_bins:
+                print("no frames with km data found")
+                return 1
+
+            if args.print_json:
+                km_payload: dict[str, Any] = {"km_bins": km_bins}
+                if args.budget is not None:
+                    km_payload["priority"] = prioritize_maintenance(km_bins, budget_km=args.budget)
+                print(json.dumps(km_payload, indent=2))
+            else:
+                output = Path(args.output)
+                generate_km_report(km_bins, output, title=args.title)
+                print(
+                    f"km report: {output} ({len(km_bins)} bins, "
+                    f"{sum(b['frame_count'] for b in km_bins)} frames)"
+                )
+
+                if args.budget is not None:
+                    priority = prioritize_maintenance(km_bins, budget_km=args.budget)
+                    print(f"\npriority maintenance ({args.budget:.1f} km budget):")
+                    for seg in priority:
+                        print(
+                            f"  km {seg['km_start']:.1f}-{seg['km_end']:.1f}  "
+                            f"risk={seg['avg_risk']:.4f}  urgency={seg['urgency']}"
+                        )
+                    if not priority:
+                        print("  (no segments fit within budget)")
+
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
     if args.command == "trend":
         try:
             model_root = Path(args.model_root)
@@ -863,6 +1485,35 @@ def main(argv: list[str] | None = None) -> int:
             write_trend_report(out, runs, title=args.title)
             print(f"trend report: {out} ({len(runs)} runs)")
             return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"runtime error: {exc}")
+            return 1
+
+    if args.command == "serve":
+        try:
+            from temporalci.server import create_app, run_server
+
+            video = Path(args.video)
+            if not video.is_file():
+                print(f"video not found: {video}")
+                return 1
+
+            app = create_app(
+                video_path=str(video),
+                fps=args.fps,
+                max_frames=args.max_frames,
+                device=args.device,
+                skip_depth=args.skip_depth,
+                output_dir=args.output_dir,
+            )
+            print(f"Starting live dashboard at http://{args.host}:{args.port}")
+            print(f"Video: {video}")
+            print("Press Ctrl+C to stop")
+            run_server(app, host=args.host, port=args.port)
+            return 0
+        except ImportError as exc:
+            print(f"missing dependency: {exc}")
+            return 1
         except Exception as exc:  # noqa: BLE001
             print(f"runtime error: {exc}")
             return 1
