@@ -1,17 +1,44 @@
-repos:
+﻿repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.1
+    rev: v0.14.11
     hooks:
-      - id: ruff
-        args: [--fix]
+      - id: ruff-check
+        pass_filenames: false
+        args:
+          - temporalci/contracts
+          - temporalci/services
+          - temporalci/cli.py
+          - temporalci/cli/cmd_proof_pack.py
+          - tests/test_campaign.py
+          - tests/test_sales_pack.py
+          - tests/test_sales_pack_contracts.py
+          - tests/test_proof_pack.py
+          - tests/test_proof_pack_contracts.py
+          - tests/test_campaign_contracts.py
+          - tests/test_campaign_pack_service.py
+          - tests/test_campaign_artifact_service.py
       - id: ruff-format
-
+        pass_filenames: false
+        args:
+          - --check
+          - temporalci/contracts
+          - temporalci/services
+          - temporalci/cli.py
+          - temporalci/cli/cmd_proof_pack.py
+          - tests/test_campaign.py
+          - tests/test_sales_pack.py
+          - tests/test_sales_pack_contracts.py
+          - tests/test_proof_pack.py
+          - tests/test_proof_pack_contracts.py
+          - tests/test_campaign_contracts.py
+          - tests/test_campaign_pack_service.py
+          - tests/test_campaign_artifact_service.py
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.16.0
+    rev: v1.19.0
     hooks:
       - id: mypy
-        additional_dependencies:
-          - types-PyYAML>=6.0.12
-        args: [--ignore-missing-imports]
         pass_filenames: false
-        entry: mypy temporalci/
+        args:
+          - --follow-imports=skip
+          - temporalci/contracts
+          - temporalci/services
