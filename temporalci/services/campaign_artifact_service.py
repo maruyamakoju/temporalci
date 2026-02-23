@@ -3,14 +3,31 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import shutil
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from temporalci.contracts.campaign import CampaignManifest, CampaignProvenance
-from temporalci.core.utils import now_utc_iso, safe_slug
+
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+_SAFE_SLUG_RE = re.compile(r"[^a-z0-9._-]+")
+
+
+def safe_slug(value: str, *, fallback: str = "item") -> str:
+    text = str(value or "").strip().lower()
+    text = text.replace(" ", "-")
+    text = _SAFE_SLUG_RE.sub("-", text).strip("-.")
+    if text == "":
+        return fallback
+    return text
 
 
 def _sha256_file(path: Path) -> str:
@@ -97,7 +114,9 @@ def _sanitize_for_distribution(value: Any, *, key_hint: str | None = None) -> An
             return _redact_local_path(value)
         if is_path_key:
             normalized = value.replace("\\", "/")
-            if ":" in normalized and not normalized.startswith(("http://", "https://", "s3://", "gs://", "az://")):
+            if ":" in normalized and not normalized.startswith(
+                ("http://", "https://", "s3://", "gs://", "az://")
+            ):
                 return _redact_local_path(normalized)
             return normalized
     return value
@@ -159,14 +178,18 @@ def _build_suite_map_entries(suite_snapshot_records: list[dict[str, Any]]) -> li
     return entries
 
 
-def _sanitize_run_record(record: dict[str, Any], *, suite_display_by_path: dict[str, str]) -> dict[str, Any]:
+def _sanitize_run_record(
+    record: dict[str, Any], *, suite_display_by_path: dict[str, str]
+) -> dict[str, Any]:
     out = dict(record)
     out["suite_path"] = _display_suite_path(
         str(out.get("suite_path") or ""), suite_display_by_path=suite_display_by_path
     )
     if "suite_display_path" in out:
         raw_display = str(out.get("suite_display_path") or out.get("suite_path") or "")
-        out["suite_display_path"] = _display_suite_path(raw_display, suite_display_by_path=suite_display_by_path)
+        out["suite_display_path"] = _display_suite_path(
+            raw_display, suite_display_by_path=suite_display_by_path
+        )
     return out
 
 
@@ -276,7 +299,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         for row in list(request.terminal_runs or [])
     ]
 
-    sorted_sales_pack_rows = sorted(list(request.sales_pack_results or []), key=_sales_pack_sort_key)
+    sorted_sales_pack_rows = sorted(
+        list(request.sales_pack_results or []), key=_sales_pack_sort_key
+    )
 
     sales_pack_results_manifest: list[dict[str, Any]] = []
     for row in sorted_sales_pack_rows:
@@ -296,7 +321,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         sanitized = dict(row)
         proof_value = sanitized.get("proof_path")
         if isinstance(proof_value, str) and proof_value.strip() != "":
-            sanitized["proof_path"] = str(_path_for_manifest(proof_value, root=output_dir) or proof_value)
+            sanitized["proof_path"] = str(
+                _path_for_manifest(proof_value, root=output_dir) or proof_value
+            )
         sanitized["suite_path"] = _display_suite_path(
             str(sanitized.get("suite_path") or ""),
             suite_display_by_path=request.suite_display_by_path,
@@ -309,7 +336,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         terminal_counts[label] = int(terminal_counts.get(label, 0)) + 1
     terminal_counts = dict(sorted(terminal_counts.items(), key=lambda item: str(item[0])))
 
-    pack_errors = sum(1 for row in sales_pack_results_manifest if int(row.get("exit_code") or 0) != 0)
+    pack_errors = sum(
+        1 for row in sales_pack_results_manifest if int(row.get("exit_code") or 0) != 0
+    )
     suite_snapshot_rel_paths = sorted(
         {
             str(row.get("snapshot_path") or "").replace("\\", "/")
@@ -320,7 +349,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
     suite_snapshot_count = len(suite_snapshot_rel_paths)
     generated_at_text = str(request.generated_at_utc or "").strip()
     generated_at = generated_at_text if generated_at_text != "" else now_utc_iso()
-    provenance_rel_path = str(_path_for_manifest(provenance_path, root=output_dir) or "provenance.json")
+    provenance_rel_path = str(
+        _path_for_manifest(provenance_path, root=output_dir) or "provenance.json"
+    )
 
     manifest_model = CampaignManifest(
         campaign_id=str(request.campaign_id),
@@ -345,7 +376,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
             "request_timeout_sec": int(request.request_timeout_sec),
             "max_wait_sec": float(request.max_wait_sec),
             "pair_mode": str(request.pair_mode),
-            "baseline_model": (None if request.baseline_model is None else str(request.baseline_model)),
+            "baseline_model": (
+                None if request.baseline_model is None else str(request.baseline_model)
+            ),
             "output_root": (None if request.output_root is None else str(request.output_root)),
             "campaign_filter_mode": "campaign_id+suite_path",
             "priority": request.priority,
@@ -356,7 +389,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
             "zip_mode": str(request.zip_mode),
             "require_sig": bool(request.require_sig),
             "require_sig_min": int(max(1, int(request.require_sig_min))),
-            "require_metric": (None if request.require_metric is None else str(request.require_metric)),
+            "require_metric": (
+                None if request.require_metric is None else str(request.require_metric)
+            ),
             "require_metric_delta_abs": request.require_metric_delta_abs,
             "require_metric_sig": bool(request.require_metric_sig),
             "require_metric_sig_min": int(max(1, int(request.require_metric_sig_min))),
@@ -422,11 +457,15 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
             "model_names": list(request.model_names or []),
             "runs_per_combination": int(request.runs_per_combination),
             "pair_mode": str(request.pair_mode),
-            "baseline_model": (None if request.baseline_model is None else str(request.baseline_model)),
+            "baseline_model": (
+                None if request.baseline_model is None else str(request.baseline_model)
+            ),
             "campaign_filter_mode": "campaign_id+suite_path",
             "require_sig": bool(request.require_sig),
             "require_sig_min": int(max(1, int(request.require_sig_min))),
-            "require_metric": (None if request.require_metric is None else str(request.require_metric)),
+            "require_metric": (
+                None if request.require_metric is None else str(request.require_metric)
+            ),
             "require_metric_delta_abs": request.require_metric_delta_abs,
             "require_metric_sig": bool(request.require_metric_sig),
             "require_metric_sig_min": int(max(1, int(request.require_metric_sig_min))),
@@ -537,7 +576,9 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
             "zip_path": str(_path_for_manifest(zip_path, root=output_dir) or zip_path.name),
             "zip_entries": int(zip_entries),
             "zip_mode": str(request.zip_mode),
-            "provenance_path": str(_path_for_manifest(provenance_path, root=output_dir) or "provenance.json"),
+            "provenance_path": str(
+                _path_for_manifest(provenance_path, root=output_dir) or "provenance.json"
+            ),
             "suite_snapshot_count": int(suite_snapshot_count),
             "zip_sha256": zip_sha256,
         }

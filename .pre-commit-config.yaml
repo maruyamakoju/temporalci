@@ -5,33 +5,17 @@
       - id: ruff-check
         pass_filenames: false
         args:
-          - temporalci/contracts
-          - temporalci/services
-          - temporalci/cli.py
-          - temporalci/cli/cmd_proof_pack.py
-          - tests/test_campaign.py
-          - tests/test_sales_pack.py
-          - tests/test_sales_pack_contracts.py
-          - tests/test_proof_pack.py
-          - tests/test_proof_pack_contracts.py
+          - temporalci/contracts/campaign.py
+          - temporalci/services/campaign_artifact_service.py
           - tests/test_campaign_contracts.py
-          - tests/test_campaign_pack_service.py
           - tests/test_campaign_artifact_service.py
       - id: ruff-format
         pass_filenames: false
         args:
           - --check
-          - temporalci/contracts
-          - temporalci/services
-          - temporalci/cli.py
-          - temporalci/cli/cmd_proof_pack.py
-          - tests/test_campaign.py
-          - tests/test_sales_pack.py
-          - tests/test_sales_pack_contracts.py
-          - tests/test_proof_pack.py
-          - tests/test_proof_pack_contracts.py
+          - temporalci/contracts/campaign.py
+          - temporalci/services/campaign_artifact_service.py
           - tests/test_campaign_contracts.py
-          - tests/test_campaign_pack_service.py
           - tests/test_campaign_artifact_service.py
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.0

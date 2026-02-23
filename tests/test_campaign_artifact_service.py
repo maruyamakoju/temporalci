@@ -194,14 +194,18 @@ def test_build_campaign_artifacts_zip_is_deterministic_for_same_payload(tmp_path
     )
 
     result_first = build_campaign_artifacts(request)
-    first_zip_bytes = result_first.zip_path.read_bytes() if result_first.zip_path is not None else b""
+    first_zip_bytes = (
+        result_first.zip_path.read_bytes() if result_first.zip_path is not None else b""
+    )
     assert result_first.zip_sha256 is not None
 
     for source in sorted([p for p in pair_dir.rglob("*") if p.is_file()], key=lambda p: str(p)):
         os.utime(source, (1_700_000_100, 1_700_000_100))
 
     result_second = build_campaign_artifacts(request)
-    second_zip_bytes = result_second.zip_path.read_bytes() if result_second.zip_path is not None else b""
+    second_zip_bytes = (
+        result_second.zip_path.read_bytes() if result_second.zip_path is not None else b""
+    )
     assert result_second.zip_sha256 is not None
     assert result_first.zip_sha256 == result_second.zip_sha256
     assert first_zip_bytes == second_zip_bytes

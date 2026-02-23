@@ -72,7 +72,9 @@ class CampaignManifest:
         }
 
     def to_json_bytes(self) -> bytes:
-        return json.dumps(self.to_dict(), ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+        return json.dumps(self.to_dict(), ensure_ascii=True, indent=2, sort_keys=True).encode(
+            "utf-8"
+        )
 
     def write_json(self, path: Path | str) -> Path:
         target = Path(path).expanduser().resolve()
@@ -89,11 +91,15 @@ class CampaignManifest:
         return cls(
             schema_version=schema_version,
             campaign_id=_as_required_text(raw.get("campaign_id"), field_name="campaign_id"),
-            generated_at_utc=_as_required_text(raw.get("generated_at_utc"), field_name="generated_at_utc"),
+            generated_at_utc=_as_required_text(
+                raw.get("generated_at_utc"), field_name="generated_at_utc"
+            ),
             window=_as_dict(raw.get("window"), field_name="window"),
             config=_as_dict(raw.get("config"), field_name="config"),
             summary=_as_dict(raw.get("summary"), field_name="summary"),
-            submitted_runs=_as_list_of_dicts(raw.get("submitted_runs"), field_name="submitted_runs"),
+            submitted_runs=_as_list_of_dicts(
+                raw.get("submitted_runs"), field_name="submitted_runs"
+            ),
             terminal_runs=_as_list_of_dicts(raw.get("terminal_runs"), field_name="terminal_runs"),
             submit_errors=_as_list_of_dicts(raw.get("submit_errors"), field_name="submit_errors"),
             poll_errors=_as_list_of_dicts(raw.get("poll_errors"), field_name="poll_errors"),
@@ -136,7 +142,9 @@ class CampaignProvenance:
         }
 
     def to_json_bytes(self) -> bytes:
-        return json.dumps(self.to_dict(), ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+        return json.dumps(self.to_dict(), ensure_ascii=True, indent=2, sort_keys=True).encode(
+            "utf-8"
+        )
 
     def write_json(self, path: Path | str) -> Path:
         target = Path(path).expanduser().resolve()
@@ -152,13 +160,17 @@ class CampaignProvenance:
             raise ValueError("schema_version must be campaign_provenance.v1")
         return cls(
             schema_version=schema_version,
-            generated_at_utc=_as_required_text(raw.get("generated_at_utc"), field_name="generated_at_utc"),
+            generated_at_utc=_as_required_text(
+                raw.get("generated_at_utc"), field_name="generated_at_utc"
+            ),
             campaign_id=_as_required_text(raw.get("campaign_id"), field_name="campaign_id"),
             temporalci=_as_dict(raw.get("temporalci"), field_name="temporalci"),
             runtime=_as_dict(raw.get("runtime"), field_name="runtime"),
             git=_as_optional_dict(raw.get("git"), field_name="git"),
             config=_as_dict(raw.get("config"), field_name="config"),
-            suite_snapshots=_as_list_of_dicts(raw.get("suite_snapshots"), field_name="suite_snapshots"),
+            suite_snapshots=_as_list_of_dicts(
+                raw.get("suite_snapshots"), field_name="suite_snapshots"
+            ),
             artifacts=_as_dict(raw.get("artifacts"), field_name="artifacts"),
         )
 

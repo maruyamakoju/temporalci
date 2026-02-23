@@ -12,7 +12,10 @@ def test_campaign_manifest_json_contains_schema_version(tmp_path: Path) -> None:
     manifest = CampaignManifest(
         campaign_id="cmp-123",
         generated_at_utc="2026-02-23T00:00:00+00:00",
-        window={"started_at": "2026-02-23T00:00:00+00:00", "finished_at": "2026-02-23T00:01:00+00:00"},
+        window={
+            "started_at": "2026-02-23T00:00:00+00:00",
+            "finished_at": "2026-02-23T00:01:00+00:00",
+        },
         config={"project": "temporalci-demo"},
         summary={"jobs_total": 2},
         submitted_runs=[],
@@ -22,7 +25,12 @@ def test_campaign_manifest_json_contains_schema_version(tmp_path: Path) -> None:
         sales_packs=[],
         validation={"required": False, "passed": True, "qualifying_pairs": 0, "checked_pairs": []},
         provenance={"path": "provenance.json"},
-        artifacts={"zip_path": None, "zip_entries": 0, "zip_mode": None, "provenance_path": "provenance.json"},
+        artifacts={
+            "zip_path": None,
+            "zip_entries": 0,
+            "zip_mode": None,
+            "provenance_path": "provenance.json",
+        },
     )
     path = manifest.write_json(tmp_path / "campaign_manifest.json")
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -51,7 +59,10 @@ def test_campaign_manifest_from_file_round_trip(tmp_path: Path) -> None:
     manifest = CampaignManifest(
         campaign_id="cmp-123",
         generated_at_utc="2026-02-23T00:00:00+00:00",
-        window={"started_at": "2026-02-23T00:00:00+00:00", "finished_at": "2026-02-23T00:01:00+00:00"},
+        window={
+            "started_at": "2026-02-23T00:00:00+00:00",
+            "finished_at": "2026-02-23T00:01:00+00:00",
+        },
         config={"project": "temporalci-demo"},
         summary={"jobs_total": 2},
         submitted_runs=[],
@@ -61,7 +72,12 @@ def test_campaign_manifest_from_file_round_trip(tmp_path: Path) -> None:
         sales_packs=[],
         validation={"required": False, "passed": True, "qualifying_pairs": 0, "checked_pairs": []},
         provenance={"path": "provenance.json"},
-        artifacts={"zip_path": None, "zip_entries": 0, "zip_mode": None, "provenance_path": "provenance.json"},
+        artifacts={
+            "zip_path": None,
+            "zip_entries": 0,
+            "zip_mode": None,
+            "provenance_path": "provenance.json",
+        },
     )
     path = manifest.write_json(tmp_path / "campaign_manifest.json")
     loaded = CampaignManifest.from_file(path)
