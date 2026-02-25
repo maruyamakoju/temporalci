@@ -9,3 +9,5 @@ temporalci.egg-info/
 .ruff_cache/
 .claude/
 *.bundle
+.temporalci/
+.venv_schema_check/
