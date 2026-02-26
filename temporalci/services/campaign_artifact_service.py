@@ -100,6 +100,7 @@ _PATH_KEYWORDS = (
 
 _ZIP_FIXED_DATETIME = (1980, 1, 1, 0, 0, 0)
 _ZIP_FILE_EXTERNAL_ATTR = 0o100644 << 16
+_ZIP_MODES = {"pdf", "full"}
 
 
 def _sanitize_for_distribution(value: Any, *, key_hint: str | None = None) -> Any:
@@ -281,7 +282,36 @@ class CampaignArtifactBuildResult:
     zip_sha256: str | None
 
 
+def _require_text(value: str | None, *, field_name: str) -> str:
+    text = str(value or "").strip()
+    if text == "":
+        raise ValueError(f"{field_name} is required")
+    return text
+
+
+def _normalize_zip_mode(value: str | None) -> str:
+    mode = str(value or "pdf").strip().lower()
+    if mode not in _ZIP_MODES:
+        raise ValueError(f"zip_mode must be one of {sorted(_ZIP_MODES)}, got: {value!r}")
+    return mode
+
+
+def _validate_build_request(request: CampaignArtifactBuildRequest) -> None:
+    _require_text(request.campaign_id, field_name="campaign_id")
+    _require_text(request.project, field_name="project")
+    _require_text(request.suite_name, field_name="suite_name")
+    _require_text(request.window_started_at, field_name="window_started_at")
+    _require_text(request.window_finished_at, field_name="window_finished_at")
+    _normalize_zip_mode(request.zip_mode)
+
+
 def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignArtifactBuildResult:
+    _validate_build_request(request)
+    campaign_id = _require_text(request.campaign_id, field_name="campaign_id")
+    project = _require_text(request.project, field_name="project")
+    suite_name = _require_text(request.suite_name, field_name="suite_name")
+    zip_mode = _normalize_zip_mode(request.zip_mode)
+
     output_dir = Path(str(request.output_dir)).expanduser().resolve()
     summary_path = Path(str(request.summary_path)).expanduser().resolve()
     provenance_path = Path(str(request.provenance_path)).expanduser().resolve()
@@ -354,7 +384,7 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
     )
 
     manifest_model = CampaignManifest(
-        campaign_id=str(request.campaign_id),
+        campaign_id=campaign_id,
         generated_at_utc=generated_at,
         window={
             "started_at": str(request.window_started_at),
@@ -362,8 +392,8 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         },
         config={
             "coordinator_url": str(request.coordinator_url),
-            "project": str(request.project),
-            "suite_name": str(request.suite_name),
+            "project": project,
+            "suite_name": suite_name,
             "suite_paths": [
                 _display_suite_path(path, suite_display_by_path=request.suite_display_by_path)
                 for path in list(request.suite_paths or [])
@@ -386,7 +416,7 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
             "max_gpu_util_percent": request.max_gpu_util_percent,
             "max_gpu_memory_used_gb": request.max_gpu_memory_used_gb,
             "zip": bool(request.zip_enabled),
-            "zip_mode": str(request.zip_mode),
+            "zip_mode": zip_mode,
             "require_sig": bool(request.require_sig),
             "require_sig_min": int(max(1, int(request.require_sig_min))),
             "require_metric": (
@@ -443,13 +473,13 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
 
     provenance_model = CampaignProvenance(
         generated_at_utc=generated_at,
-        campaign_id=str(request.campaign_id),
+        campaign_id=campaign_id,
         temporalci={"version": request.temporalci_version},
         runtime=_build_runtime_info(request.runtime_info),
         git=(None if request.git_info is None else dict(request.git_info)),
         config={
-            "project": str(request.project),
-            "suite_name": str(request.suite_name),
+            "project": project,
+            "suite_name": suite_name,
             "suite_paths": [
                 _display_suite_path(path, suite_display_by_path=request.suite_display_by_path)
                 for path in list(request.suite_paths or [])
@@ -487,8 +517,7 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         if isinstance(request.zip_output, str) and request.zip_output.strip() != "":
             zip_path = Path(request.zip_output).expanduser().resolve()
         else:
-            zip_path = output_dir / f"{safe_slug(str(request.campaign_id))}.zip"
-        zip_mode = str(request.zip_mode or "pdf").strip().lower()
+            zip_path = output_dir / f"{safe_slug(campaign_id)}.zip"
         zip_path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
             written_arcnames: set[str] = set()
@@ -575,7 +604,7 @@ def build_campaign_artifacts(request: CampaignArtifactBuildRequest) -> CampaignA
         manifest_model.artifacts = {
             "zip_path": str(_path_for_manifest(zip_path, root=output_dir) or zip_path.name),
             "zip_entries": int(zip_entries),
-            "zip_mode": str(request.zip_mode),
+            "zip_mode": zip_mode,
             "provenance_path": str(
                 _path_for_manifest(provenance_path, root=output_dir) or "provenance.json"
             ),

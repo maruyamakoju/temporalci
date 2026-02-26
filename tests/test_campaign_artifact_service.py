@@ -4,16 +4,16 @@ import json
 import os
 import zipfile
 from pathlib import Path
+from typing import Any
 
+import pytest
 from temporalci.services.campaign_artifact_service import (
     CampaignArtifactBuildRequest,
     build_campaign_artifacts,
 )
 
 
-def test_build_campaign_artifacts_writes_manifest_provenance_and_zip(tmp_path: Path) -> None:
-    output_dir = tmp_path / "campaign"
-    pair_dir = output_dir / "sales_packs" / "suite-a" / "base__vs__target"
+def _seed_sales_pack_pair(pair_dir: Path) -> None:
     pair_dir.mkdir(parents=True, exist_ok=True)
     (pair_dir / "manifest.json").write_text("{}", encoding="utf-8")
     (pair_dir / "SALES_PACK.pdf").write_bytes(b"%PDF-1.4\n%demo\n")
@@ -24,74 +24,87 @@ def test_build_campaign_artifacts_writes_manifest_provenance_and_zip(tmp_path: P
     )
     (pair_dir / "03_failure_casebook.json").write_text("[]", encoding="utf-8")
 
-    summary_path = output_dir / "campaign_manifest.json"
-    provenance_path = output_dir / "provenance.json"
 
-    result = build_campaign_artifacts(
-        CampaignArtifactBuildRequest(
-            output_dir=output_dir,
-            summary_path=summary_path,
-            provenance_path=provenance_path,
-            campaign_id="cmp-123",
-            coordinator_url="http://localhost:8080",
-            project="temporalci-demo",
-            suite_name="regression_core",
-            suite_paths=["suites/regression_core.yaml"],
-            model_names=["base", "target"],
-            runs_per_combination=1,
-            max_inflight=2,
-            poll_interval_sec=1.0,
-            request_timeout_sec=10,
-            max_wait_sec=60.0,
-            pair_mode="all",
-            baseline_model=None,
-            output_root=None,
-            priority=None,
-            min_vram_gb=None,
-            max_gpu_util_percent=None,
-            max_gpu_memory_used_gb=None,
-            require_sig=True,
-            require_sig_min=1,
-            require_metric="temporal_structure_v1",
-            require_metric_delta_abs=0.1,
-            require_metric_sig=True,
-            require_metric_sig_min=1,
-            window_started_at="2026-02-23T00:00:00+00:00",
-            window_finished_at="2026-02-23T00:01:00+00:00",
-            jobs_total=2,
-            jobs_pending=0,
-            jobs_inflight=0,
-            terminal_failures=0,
-            stop_reason=None,
-            timeout_sec=None,
-            timed_out_run_ids=[],
-            cancellation_requested=False,
-            suite_display_by_path={"suites/regression_core.yaml": "regression_core.yaml"},
-            suite_snapshot_records=[],
-            submitted_runs=[],
-            terminal_runs=[],
-            submit_errors=[],
-            poll_errors=[],
-            sales_pack_results=[
-                {
-                    "suite_path": "suites/regression_core.yaml",
-                    "suite_archive_id": "suite-a",
-                    "pair_slug": "base__vs__target",
-                    "output_dir": str(pair_dir),
-                    "exit_code": 0,
-                }
-            ],
-            validation_required=True,
-            validation_passed=True,
-            qualifying_pairs=1,
-            validation_pairs=[],
-            temporalci_version="0.0.0-test",
-            git_info={"available": False, "commit": None, "dirty": None, "branch": None},
-            zip_enabled=True,
-            zip_mode="full",
-            zip_output=str(output_dir / "bundle.zip"),
-        )
-    )
+def _build_request(
+    *,
+    output_dir: Path,
+    pair_dir: Path,
+    overrides: dict[str, Any] | None = None,
+) -> CampaignArtifactBuildRequest:
+    payload: dict[str, Any] = {
+        "output_dir": output_dir,
+        "summary_path": output_dir / "campaign_manifest.json",
+        "provenance_path": output_dir / "provenance.json",
+        "campaign_id": "cmp-123",
+        "coordinator_url": "http://localhost:8080",
+        "project": "temporalci-demo",
+        "suite_name": "regression_core",
+        "suite_paths": ["suites/regression_core.yaml"],
+        "model_names": ["base", "target"],
+        "runs_per_combination": 1,
+        "max_inflight": 2,
+        "poll_interval_sec": 1.0,
+        "request_timeout_sec": 10,
+        "max_wait_sec": 60.0,
+        "pair_mode": "all",
+        "baseline_model": None,
+        "output_root": None,
+        "priority": None,
+        "min_vram_gb": None,
+        "max_gpu_util_percent": None,
+        "max_gpu_memory_used_gb": None,
+        "require_sig": True,
+        "require_sig_min": 1,
+        "require_metric": "temporal_structure_v1",
+        "require_metric_delta_abs": 0.1,
+        "require_metric_sig": True,
+        "require_metric_sig_min": 1,
+        "window_started_at": "2026-02-23T00:00:00+00:00",
+        "window_finished_at": "2026-02-23T00:01:00+00:00",
+        "jobs_total": 2,
+        "jobs_pending": 0,
+        "jobs_inflight": 0,
+        "terminal_failures": 0,
+        "stop_reason": None,
+        "timeout_sec": None,
+        "timed_out_run_ids": [],
+        "cancellation_requested": False,
+        "suite_display_by_path": {"suites/regression_core.yaml": "regression_core.yaml"},
+        "suite_snapshot_records": [],
+        "submitted_runs": [],
+        "terminal_runs": [],
+        "submit_errors": [],
+        "poll_errors": [],
+        "sales_pack_results": [
+            {
+                "suite_path": "suites/regression_core.yaml",
+                "suite_archive_id": "suite-a",
+                "pair_slug": "base__vs__target",
+                "output_dir": str(pair_dir),
+                "exit_code": 0,
+            }
+        ],
+        "validation_required": True,
+        "validation_passed": True,
+        "qualifying_pairs": 1,
+        "validation_pairs": [],
+        "temporalci_version": "0.0.0-test",
+        "git_info": {"available": False, "commit": None, "dirty": None, "branch": None},
+        "zip_enabled": True,
+        "zip_mode": "full",
+        "zip_output": str(output_dir / "bundle.zip"),
+    }
+    if overrides:
+        payload.update(overrides)
+    return CampaignArtifactBuildRequest(**payload)
+
+
+def test_build_campaign_artifacts_writes_manifest_provenance_and_zip(tmp_path: Path) -> None:
+    output_dir = tmp_path / "campaign"
+    pair_dir = output_dir / "sales_packs" / "suite-a" / "base__vs__target"
+    _seed_sales_pack_pair(pair_dir)
+    request = _build_request(output_dir=output_dir, pair_dir=pair_dir)
+    result = build_campaign_artifacts(request)
 
     assert result.summary_path.exists()
     assert result.provenance_path.exists()
@@ -118,79 +131,14 @@ def test_build_campaign_artifacts_writes_manifest_provenance_and_zip(tmp_path: P
 def test_build_campaign_artifacts_zip_is_deterministic_for_same_payload(tmp_path: Path) -> None:
     output_dir = tmp_path / "campaign_deterministic"
     pair_dir = output_dir / "sales_packs" / "suite-a" / "base__vs__target"
-    pair_dir.mkdir(parents=True, exist_ok=True)
-    (pair_dir / "manifest.json").write_text("{}", encoding="utf-8")
-    (pair_dir / "SALES_PACK.pdf").write_bytes(b"%PDF-1.4\n%demo\n")
-    (pair_dir / "SALES_PACK_SUMMARY.md").write_text("# summary\n", encoding="utf-8")
-    (pair_dir / "01_proof_pack.json").write_text(
-        json.dumps({"comparison": {"rows": [], "condition_rows": []}}),
-        encoding="utf-8",
-    )
-    (pair_dir / "03_failure_casebook.json").write_text("[]", encoding="utf-8")
-
-    request = CampaignArtifactBuildRequest(
+    _seed_sales_pack_pair(pair_dir)
+    request = _build_request(
         output_dir=output_dir,
-        summary_path=output_dir / "campaign_manifest.json",
-        provenance_path=output_dir / "provenance.json",
-        campaign_id="cmp-deterministic",
-        coordinator_url="http://localhost:8080",
-        project="temporalci-demo",
-        suite_name="regression_core",
-        suite_paths=["suites/regression_core.yaml"],
-        model_names=["base", "target"],
-        runs_per_combination=1,
-        max_inflight=2,
-        poll_interval_sec=1.0,
-        request_timeout_sec=10,
-        max_wait_sec=60.0,
-        pair_mode="all",
-        baseline_model=None,
-        output_root=None,
-        priority=None,
-        min_vram_gb=None,
-        max_gpu_util_percent=None,
-        max_gpu_memory_used_gb=None,
-        require_sig=True,
-        require_sig_min=1,
-        require_metric="temporal_structure_v1",
-        require_metric_delta_abs=0.1,
-        require_metric_sig=True,
-        require_metric_sig_min=1,
-        window_started_at="2026-02-23T00:00:00+00:00",
-        window_finished_at="2026-02-23T00:01:00+00:00",
-        jobs_total=2,
-        jobs_pending=0,
-        jobs_inflight=0,
-        terminal_failures=0,
-        stop_reason=None,
-        timeout_sec=None,
-        timed_out_run_ids=[],
-        cancellation_requested=False,
-        suite_display_by_path={"suites/regression_core.yaml": "regression_core.yaml"},
-        suite_snapshot_records=[],
-        submitted_runs=[],
-        terminal_runs=[],
-        submit_errors=[],
-        poll_errors=[],
-        sales_pack_results=[
-            {
-                "suite_path": "suites/regression_core.yaml",
-                "suite_archive_id": "suite-a",
-                "pair_slug": "base__vs__target",
-                "output_dir": str(pair_dir),
-                "exit_code": 0,
-            }
-        ],
-        validation_required=True,
-        validation_passed=True,
-        qualifying_pairs=1,
-        validation_pairs=[],
-        temporalci_version="0.0.0-test",
-        git_info={"available": False, "commit": None, "dirty": None, "branch": None},
-        generated_at_utc="2026-02-23T00:00:00+00:00",
-        zip_enabled=True,
-        zip_mode="full",
-        zip_output=str(output_dir / "bundle.zip"),
+        pair_dir=pair_dir,
+        overrides={
+            "campaign_id": "cmp-deterministic",
+            "generated_at_utc": "2026-02-23T00:00:00+00:00",
+        },
     )
 
     result_first = build_campaign_artifacts(request)
@@ -209,3 +157,31 @@ def test_build_campaign_artifacts_zip_is_deterministic_for_same_payload(tmp_path
     assert result_second.zip_sha256 is not None
     assert result_first.zip_sha256 == result_second.zip_sha256
     assert first_zip_bytes == second_zip_bytes
+
+
+def test_build_campaign_artifacts_rejects_invalid_zip_mode(tmp_path: Path) -> None:
+    output_dir = tmp_path / "campaign_invalid_zip_mode"
+    pair_dir = output_dir / "sales_packs" / "suite-a" / "base__vs__target"
+    _seed_sales_pack_pair(pair_dir)
+    request = _build_request(
+        output_dir=output_dir,
+        pair_dir=pair_dir,
+        overrides={"zip_mode": "invalid-mode"},
+    )
+
+    with pytest.raises(ValueError, match="zip_mode must be one of"):
+        build_campaign_artifacts(request)
+
+
+def test_build_campaign_artifacts_rejects_empty_campaign_id(tmp_path: Path) -> None:
+    output_dir = tmp_path / "campaign_missing_campaign_id"
+    pair_dir = output_dir / "sales_packs" / "suite-a" / "base__vs__target"
+    _seed_sales_pack_pair(pair_dir)
+    request = _build_request(
+        output_dir=output_dir,
+        pair_dir=pair_dir,
+        overrides={"campaign_id": "   "},
+    )
+
+    with pytest.raises(ValueError, match="campaign_id is required"):
+        build_campaign_artifacts(request)
